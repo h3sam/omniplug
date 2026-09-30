@@ -172,10 +172,10 @@ Ticket  { serial, ok, phase: "landed" | "refused" | "sent" | "unconfirmed", reas
   - a widget returning to the drawer goes back to its remembered spot;
   - anything else going to the drawer goes to the end;
   - a bar section uses today's anchor rule (after workspaces, weather or tray).
-- **`to: "off"`** means:
-  - for a stowed widget: add it to `disabledPlugins` and keep its drawer spot
-    and carrier;
-  - for a widget in the bar: the host's own disable (`omarchy plugin disable`).
+- **`to: "off"`** applies only to a stowed widget: it adds the widget to
+  `disabledPlugins` and keeps its drawer spot and carrier. For a widget in the
+  bar, Placement refuses with `notStowed`, and the manager keeps using the
+  host's own disable (`omarchy plugin disable`).
 - **Turning it back on** is `to: "drawer"` with no `gap`, which also removes
   it from `disabledPlugins`.
 - **`to: "remove"`** forgets a stowed id. This is how a placeholder is removed,
@@ -266,14 +266,16 @@ Nothing throws. A ticket comes back `refused`, with one of these reasons:
 | `stale` | The config changed since the caller's board key |
 | `busy` | Another write is in flight |
 | `invalid` | The intent is malformed |
-| `self` | Tried to stow Omniplug itself |
+| `self` | Tried to stow, switch off or remove Omniplug itself (moving it around the bar is fine) |
 | `notStowable` | A refused kind, custom entry or conflict |
 | `lastBuiltin` | Would stow the last `omarchy.*` widget on the bar |
 | `duplicate` | The id appears more than once on the bar |
 | `needsBarAccess` | No Bar root, and the move crosses the bar and the drawer |
 | `untransportable` | An id that the CLI fallback cannot pass through argv losslessly |
 | `limits` | The config is too large to process |
-| `unreadable` | The config could not be read whole |
+| `unreadable` | The config, or the plugin list a carrier change depends on, could not be read whole |
+| `conflict` | The id is both on the bar and in the drawer (a hand edit); move one copy by hand |
+| `notStowed` / `notPlaced` | Off or remove for a widget not in the drawer; a bar move for a widget placed nowhere |
 
 Otherwise the phase is `landed`, `sent` (only on the CLI fallback, while it
 waits for the host) or `unconfirmed`. Each ticket carries a one-line `note`
