@@ -12,6 +12,10 @@
 
 var widgets = []
 var moveOwner = null
+// The built-in bar's single root, once any Omniplug widget has found it (see
+// LiveBarPort.qml). Kept only as a live QML object reference and re-checked
+// by every reader; a shell reload destroys it and the next reader looks again.
+var sharedHostBar = null
 // Never retain a popup closure or a move plan here; the store owns dispatch.
 var continuation = null
 
@@ -120,4 +124,18 @@ function openPopup(screenName) {
   if (!chosen) return false
   chosen.open()
   return true
+}
+
+function offerHostBar(root) {
+  if (!root || typeof root.pluginBarApiFor !== "function") return
+  sharedHostBar = root
+  if (moveOwner && typeof moveOwner.hostBarOffered === "function") moveOwner.hostBarOffered(root)
+}
+
+function hostBar() {
+  try {
+    if (sharedHostBar && typeof sharedHostBar.pluginBarApiFor === "function") return sharedHostBar
+  } catch (error) {}
+  sharedHostBar = null
+  return null
 }
