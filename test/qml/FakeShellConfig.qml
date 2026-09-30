@@ -13,6 +13,7 @@ Item {
   // null means "no in-process writer": the owner falls back to barConfig.
   property var config: null
   property bool canCross: config !== null
+  property string problem: config !== null ? "" : "Omniplug has not found the bar yet."
   // Hold writes until flush(), like a host that shows them late.
   property bool delayed: false
   // Something the host does to its copy just before running the mutator.

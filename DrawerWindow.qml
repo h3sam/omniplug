@@ -215,6 +215,7 @@ PanelWindow {
           if (mounts.count === 0) return "Nothing stowed yet. In Manage, open Arrange and drag widgets into the Drawer."
           if (problem === "searching") return "Looking for the bar…"
           if (problem !== "") return HostingModel.hostingReasonText("no-host")
+            + (drawer.port && drawer.port.problem ? " " + drawer.port.problem : "")
           return ""
         }
         color: Util.alpha(Color.popups.text, 0.54)

@@ -24,6 +24,9 @@ Item {
   readonly property bool attached: barRoot !== null
   readonly property bool searching: barRoot === null && attempts < 40
   property int attempts: 0
+  // Why the bar has not been found, in one sentence; "" once it has.
+  property string problem: ""
+  property string loggedProblem: ""
 
   // Reading `widgets` is what makes bindings re-evaluate when a plugin is
   // enabled, disabled or reloaded.
@@ -56,20 +59,28 @@ Item {
   }
 
   function locate() {
-    if (port.valid(port.barRoot)) return
+    if (port.valid(port.barRoot)) { port.problem = ""; return }
     var cached = PopupBridge.hostBar()
-    if (port.valid(cached)) { port.barRoot = cached; return }
+    if (port.valid(cached)) { port.barRoot = cached; port.problem = ""; return }
     port.barRoot = null
-    var window = port.owner ? port.owner.QsWindow.window : null
-    var found = window ? HostingModel.hostingFindHostBar(window.contentItem) : null
-    if (port.valid(found)) {
-      port.barRoot = found
-      PopupBridge.offerHostBar(found)
+    var window = null
+    try { window = port.owner ? port.owner.QsWindow.window : null } catch (error) { window = null }
+    var report = window ? HostingModel.hostingSearchHostBar(window.contentItem) : null
+    if (report && port.valid(report.root)) {
+      port.barRoot = report.root
+      port.problem = ""
+      PopupBridge.offerHostBar(report.root)
       return
     }
-    if (port.attempts < 40) {
-      port.attempts++
-      retry.restart()
+    port.problem = HostingModel.hostingSearchProblem(report, window !== null)
+    // Quick retries while the bar builds, then a slow one for good: a bar
+    // that gains a built-in widget later is still found.
+    port.attempts++
+    retry.interval = port.attempts < 40 ? 250 : 5000
+    retry.restart()
+    if (port.attempts === 40 && port.problem !== port.loggedProblem) {
+      port.loggedProblem = port.problem
+      console.warn("omniplug: cannot reach the bar: " + port.problem)
     }
   }
 
@@ -105,7 +116,7 @@ Item {
 
   // A registered module slot keeps the host from pruning the widget's facade.
   function attachProxy(slot) {
-    if (!port.barRoot || !slot) return false
+    if (!port.barRoot || !slot || typeof port.barRoot.registerModuleSlot !== "function") return false
     port.barRoot.registerModuleSlot(slot)
     return true
   }

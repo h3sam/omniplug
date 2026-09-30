@@ -6,6 +6,7 @@ import assert from "node:assert/strict"
 
 const source = readFileSync(new URL("../HostingModel.js", import.meta.url), "utf8")
 const H = Function(source + `; return { hostingIsHostBar, hostingCanWrite, hostingFindHostBar,
+  hostingSearchHostBar, hostingSearchProblem, hostingWriterProblem,
   hostingIsDescendant, hostingTiles, hostingSettings, hostingSettingsKey, hostingTileState,
   hostingReasonText, hostingPopoutVerdict, HOSTING_MAX_ENTRIES }`)()
 
@@ -15,7 +16,9 @@ const barRoot = (over = {}) => ({
 
 test("a Bar root is recognised by what it can do, and only a real ShellRoot can write", () => {
   assert.equal(H.hostingIsHostBar(barRoot()), true)
-  assert.equal(H.hostingIsHostBar({ ...barRoot(), registerModuleSlot: undefined }), false)
+  assert.equal(H.hostingIsHostBar({ ...barRoot(), registerModuleSlot: undefined }), true,
+    "registerModuleSlot is optional; Hosting falls back to re-injecting facades")
+  assert.equal(H.hostingIsHostBar({ ...barRoot(), requestPopout: undefined }), false)
   assert.equal(H.hostingIsHostBar({ pluginBarApiFor() {} }), false, "a facade is not a root")
   assert.equal(H.hostingIsHostBar(null), false)
   assert.equal(H.hostingCanWrite(barRoot({ shell: { mutateShellConfig() {}, shellConfig: {} } })), true)
@@ -101,4 +104,24 @@ test("popout verdicts keep the drawer for its own children and dismiss it for an
   assert.equal(H.hostingPopoutVerdict({ shown: true, active: child, owner, ownsActive: true }), "keep")
   assert.equal(H.hostingPopoutVerdict({ shown: true, active: null, owner }), "reclaim")
   assert.equal(H.hostingPopoutVerdict({ shown: true, active: stranger, owner, ownsActive: false }), "dismiss")
+})
+
+test("a failed search says why, and so does a bar whose shell cannot write", () => {
+  const facadeOnly = { children: [{ bar: { pluginBarApiFor() {} }, children: [] }] }
+  const report = H.hostingSearchHostBar(facadeOnly)
+  assert.equal(report.root, null)
+  assert.equal(report.bars, 1)
+  assert.deepEqual(report.nearMiss, ["requestPopout", "barWidgetRegistry"])
+  assert.match(H.hostingSearchProblem(report, true), /none has requestPopout, barWidgetRegistry/)
+  assert.match(H.hostingSearchProblem(H.hostingSearchHostBar({ children: [] }), true), /built-in omarchy/)
+  assert.match(H.hostingSearchProblem(null, false), /not in a bar window/)
+  const deep = { children: Array.from({ length: 10 }, () => ({ children: [] })) }
+  assert.match(H.hostingSearchProblem(H.hostingSearchHostBar(deep, 3), true), /search limit/)
+  assert.equal(H.hostingSearchProblem(H.hostingSearchHostBar({ children: [{ bar: barRoot() }] }), true), "")
+
+  assert.match(H.hostingWriterProblem(null), /not found the bar/)
+  assert.match(H.hostingWriterProblem(barRoot()), /no shell/)
+  assert.match(H.hostingWriterProblem(barRoot({ shell: { summon() {} } })), /no mutateShellConfig/)
+  assert.match(H.hostingWriterProblem(barRoot({ shell: { mutateShellConfig() {} } })), /no config/)
+  assert.equal(H.hostingWriterProblem(barRoot({ shell: { mutateShellConfig() {}, shellConfig: {} } })), "")
 })

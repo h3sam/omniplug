@@ -10,6 +10,7 @@ Item {
   property var barRoot: rootStub
   property bool attached: true
   property bool searching: false
+  property string problem: ""
   // { id: { component, metadata: { firstParty, displayName } } }
   property var widgets: ({})
   property bool scanning: false
