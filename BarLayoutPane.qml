@@ -19,6 +19,8 @@ Item {
     property real rowHeight: 40
     readonly property bool dragging: heldSnapshot !== null && thresholdPassed
     signal moveRequested(var snapshot, string fromSection, int rawIndex, string targetSection, int preRemovalGap)
+    // A placeholder's remove control in the Drawer column.
+    signal removeRequested(var snapshot, string section, int rawIndex)
 
     property var heldSnapshot: null
     property string sourceSection: ""
@@ -30,7 +32,11 @@ Item {
     property int targetColumn: -1
     property int targetGap: -1
     readonly property real pitch: rowHeight + spacing
-    readonly property var sections: ["left", "center", "right"]
+    // The bar's three sections, and Omniplug's Drawer when the owner offers it.
+    // Drawer entries are {id, state}: state "off" is dimmed, "missing" is a
+    // placeholder with a remove control.
+    property var sections: ["left", "center", "right"]
+    readonly property real columnWidth: (width - spacing * (sections.length - 1)) / Math.max(1, sections.length)
     implicitWidth: 630
     implicitHeight: 480
     clip: true
@@ -58,7 +64,7 @@ Item {
             .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, "");
     }
     function columnAt(point) {
-        for (let i = 0; i < 3; ++i) {
+        for (let i = 0; i < sections.length; ++i) {
             const view = columns.itemAt(i).view;
             const p = view.mapFromItem(root, point.x, point.y);
             if (p.x >= 0 && p.x < view.width && p.y >= 0 && p.y < view.height)
@@ -89,6 +95,7 @@ Item {
     }
     component Card: Rectangle {
         property string labelText
+        property string entryState: ""
         height: root.rowHeight
         radius: root.radius
         color: root.rowFill
@@ -103,15 +110,28 @@ Item {
         Caption {
             anchors.fill: parent
             anchors.leftMargin: root.spacing + 20
-            anchors.rightMargin: root.spacing
+            anchors.rightMargin: root.spacing + (parent.entryState === "missing" ? root.rowHeight * 0.6 : 0)
             verticalAlignment: Text.AlignVCenter
-            text: parent.labelText
+            text: (parent.entryState === "missing" ? "⚠ " : "") + parent.labelText
+                + (parent.entryState === "off" ? " (off)" : "")
+            color: parent.entryState === "off" ? root.mutedForeground : root.foreground
+        }
+        Caption {
+            objectName: "remove"
+            anchors.right: parent.right
+            anchors.rightMargin: root.spacing
+            anchors.verticalCenter: parent.verticalCenter
+            visible: parent.entryState === "missing"
+            text: "✕"
+            color: root.mutedForeground
         }
     }
     Caption {
         id: hint
         width: parent.width
-        text: "Drag widgets to change their order or move them to another section."
+        text: root.sections.indexOf("drawer") >= 0
+            ? "Drag widgets to change their order, move them to another section, or stow them in the Drawer."
+            : "Drag widgets to change their order or move them to another section."
         color: root.mutedForeground
     }
     Row {
@@ -128,8 +148,9 @@ Item {
                 required property string modelData
                 required property int index
                 property alias view: viewport
-                readonly property var entries: root.snapshot ? root.snapshot.layout[modelData] : []
-                width: (root.width - root.spacing * 2) / 3
+                readonly property var entries: root.snapshot && root.snapshot.layout && root.snapshot.layout[modelData]
+                    ? root.snapshot.layout[modelData] : []
+                width: root.columnWidth
                 height: parent.height
                 Caption {
                     id: heading
@@ -163,6 +184,8 @@ Item {
                                 width: viewport.width
                                 y: index * root.pitch
                                 labelText: root.label(modelData)
+                                entryState: modelData && typeof modelData === "object" && typeof modelData.state === "string"
+                                    ? modelData.state : ""
                                 opacity: root.dragging && root.sourceSection === column.modelData && root.sourceIndex === index ? 0.3 : 1
                             }
                         }
@@ -203,6 +226,13 @@ Item {
             const y = local.y + column.view.contentY;
             const row = Math.floor(y / root.pitch);
             if (row >= column.entries.length || y % root.pitch >= root.rowHeight) return;
+            const entry = column.entries[row];
+            // The placeholder's remove control acts on press; it never drags.
+            if (entry && typeof entry === "object" && entry.state === "missing"
+                    && local.x >= column.view.width - root.rowHeight) {
+                root.removeRequested(root.snapshot, column.modelData, row);
+                return;
+            }
             root.forceActiveFocus();
             root.sourceSection = column.modelData;
             root.sourceIndex = row;
@@ -253,7 +283,7 @@ Item {
         visible: root.dragging
         x: root.pointer.x + root.spacing
         y: root.pointer.y + root.spacing
-        width: Math.max(0, (root.width - root.spacing * 2) / 3 - root.spacing * 2)
+        width: Math.max(0, root.columnWidth - root.spacing * 2)
         labelText: root.heldLabel
         opacity: 0.85
         border.color: root.accent

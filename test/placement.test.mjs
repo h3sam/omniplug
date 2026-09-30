@@ -344,3 +344,46 @@ test("plans leave absent host lists absent", () => {
   assert.deepEqual(stow.next.plugins, [{ id: "acme.vpn", color: "red" }])
   assert.equal("disabledPlugins" in stow.next, false)
 })
+
+test("a partial read (bar only) never guesses that a missing carrier means off", () => {
+  const c = withDrawer(["acme.vpn"])
+  delete c.plugins
+  delete c.disabledPlugins
+  const partial = facts({ canCross: false, partial: true })
+  assert.equal(P.placementBoard(c, partial).byId["acme.vpn"].state, "live")
+  assert.equal(P.placementBoard(c, facts()).byId["acme.vpn"].state, "off", "a full read with no carrier is off")
+  assert.equal(plan(c, { id: "acme.vpn", to: "remove" }, partial).reason, "needsBarAccess")
+  const reorder = plan(withDrawer(["acme.vpn", "omarchy.battery"]), { id: "acme.vpn", to: "drawer", gap: 2 }, partial)
+  assert.equal(reorder.channel, "own", "reordering needs only our own entry")
+})
+
+const A = Function(source + "; return { placementFactsFromRows, placementArrangeSnapshot, placementIntentFor, placementRemovalFor, placementBoard }")()
+
+test("Arrange draws the bar snapshot plus a Drawer column, and routes drops", () => {
+  const c = withDrawer(["omarchy.battery", "gone.widget"])
+  const board = A.placementBoard(c, facts())
+  const bar = { key: "bar-key", layout: c.bar.layout, rows: [] }
+  assert.equal(A.placementArrangeSnapshot(bar, null), bar, "no board, no Drawer column")
+  assert.equal(A.placementArrangeSnapshot(null, board), null)
+  const snap = A.placementArrangeSnapshot(bar, board)
+  assert.deepEqual(snap.layout.drawer, [{ id: "omarchy.battery", state: "live" }, { id: "gone.widget", state: "missing" }])
+  assert.equal(snap.bar, bar)
+  assert.equal(snap.key, "bar-key|" + board.key)
+
+  assert.equal(A.placementIntentFor(snap, "left", 1, "right", 0), null, "bar moves keep the omarchy-bar path")
+  assert.deepEqual(A.placementIntentFor(snap, "left", 1, "drawer", 0),
+    { id: "acme.vpn", to: "drawer", gap: 0, from: { zone: "left", index: 1 }, key: board.key })
+  assert.deepEqual(A.placementIntentFor(snap, "drawer", 0, "center", 1),
+    { id: "omarchy.battery", to: "center", gap: 1, from: { zone: "drawer", index: 0 }, key: board.key })
+  assert.equal(A.placementIntentFor(bar, "left", 1, "drawer", 0), null, "no board, no intent")
+  assert.deepEqual(A.placementRemovalFor(snap, "drawer", 1),
+    { id: "gone.widget", to: "remove", from: { zone: "drawer", index: 1 }, key: board.key })
+  assert.equal(A.placementRemovalFor(snap, "left", 0), null)
+
+  const intent = A.placementIntentFor(snap, "left", 1, "drawer", 0)
+  assert.equal(plan(c, intent).ok, true, "the intent is exactly what the owner can plan")
+
+  assert.equal(A.placementFactsFromRows([]), null)
+  assert.deepEqual(A.placementFactsFromRows([{ id: "a", name: "A", kinds: ["bar-widget"], firstParty: true }, null]),
+    { a: { name: "A", kinds: ["bar-widget"], firstParty: true } })
+})

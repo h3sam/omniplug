@@ -80,9 +80,12 @@ function placementIsCustom(entry) {
   return !!(settings.type || settings.exec || settings.source)
 }
 
-// A bounded, frozen, key-sorted deep copy: the only shape of host data this
-// file ever keeps. Throws on anything JSON cannot say or on runaway size.
-function placementCopy(value) {
+// A bounded, frozen deep copy: the only shape of host data this file ever
+// keeps. Keys are sorted, so two reads compare by content, unless keepOrder
+// is set: a config written back to shell.json keeps the order people and the
+// host gave it ("id" first). Throws on anything JSON cannot say or on runaway
+// size.
+function placementCopy(value, keepOrder) {
   var budget = { nodes: PLACEMENT_MAX_NODES, units: PLACEMENT_MAX_UNITS }
   function copy(item, depth) {
     if (--budget.nodes < 0 || depth > 16) throw new Error("limits")
@@ -97,7 +100,7 @@ function placementCopy(value) {
     if (!array && !placementIsObject(item)) throw new Error("invalid")
     var keys = Object.keys(item)
     if (array && keys.length !== item.length) throw new Error("invalid")
-    if (!array) keys.sort()
+    if (!array && !keepOrder) keys.sort()
     var result = array ? [] : {}
     for (var i = 0; i < keys.length; i++) {
       var key = array ? String(i) : keys[i]
@@ -221,7 +224,9 @@ function placementKeyOf(read) {
 }
 
 // facts: { selfId, plugins: { id: { name, kinds, firstParty } } | null,
-//          canCross: bool }. plugins is null until the plugin list has loaded.
+//          canCross: bool, partial: bool }. plugins is null until the plugin
+// list has loaded. partial means `config` holds only what the scoped facade
+// can see (the bar), so plugins[] and disabledPlugins are unknown, not empty.
 function placementBoard(config, facts) {
   var selfId = facts && typeof facts.selfId === "string" ? facts.selfId : ""
   var read
@@ -232,6 +237,7 @@ function placementBoard(config, facts) {
   var counts = {}
   var conflicts = []
   var known = !!(facts && facts.plugins)
+  var partial = !!(facts && facts.partial)
 
   function slot(id, zone, index, settings, state, custom) {
     var result = Object.freeze({
@@ -263,7 +269,7 @@ function placementBoard(config, facts) {
     else if (known && !facts.plugins[stowed]) state = "missing"
     // A third-party widget with no carrier is not registered: something (the
     // host's own `plugin disable`, a hand edit) dropped it. That is off.
-    else if (!carrier && !placementFirstParty(facts, stowed)) state = "off"
+    else if (!partial && !carrier && !placementFirstParty(facts, stowed)) state = "off"
     var stowedSlot = slot(stowed, "drawer", d, carrier ? placementEntrySettings(carrier) : {}, state, false)
     byId[stowed] = counts[stowed] ? byId[stowed] : stowedSlot
   }
@@ -439,6 +445,9 @@ function placementPlan(config, facts, intent) {
 
   if ((to === "off" || to === "remove") && !fromDrawer)
     return placementRefuse(from ? "notStowed" : "notPlaced", id)
+  // Forgetting a stowed id also drops its carrier, which a partial read
+  // cannot see; leaving one behind is worse than waiting for the bar.
+  if (to === "remove" && facts && facts.partial) return placementRefuse("needsBarAccess", id)
   if (toBar && !from) return placementRefuse("notPlaced", id)
 
   var next = placementThaw({
@@ -566,7 +575,7 @@ function placementPlan(config, facts, intent) {
     intent: placementCopy({ id: id, to: to, gap: intent.gap === undefined ? null : intent.gap,
       from: intent.from === undefined ? null : from }),
     baseKey: key,
-    next: placementCopy(next),
+    next: placementCopy(next, true),
     ownSettings: ownEntry ? placementCopy(placementEntrySettings(ownEntry)) : null,
     command: Object.freeze(command),
     expectedKey: placementKeyOf(after),
@@ -619,4 +628,60 @@ function placementAssign(copy, plan, facts) {
   if (next.disabledPlugins !== undefined) copy.disabledPlugins = next.disabledPlugins
   else delete copy.disabledPlugins
   return fresh
+}
+
+// ---- Arrange -----------------------------------------------------------
+
+// The plugin list's rows, as the facts Placement needs.
+function placementFactsFromRows(rows) {
+  if (!rows || !rows.length) return null
+  var facts = {}
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i]
+    if (!row || typeof row.id !== "string") continue
+    facts[row.id] = { name: String(row.name || row.id), kinds: row.kinds || [], firstParty: row.firstParty === true }
+  }
+  return facts
+}
+
+// What Arrange draws: the bar snapshot it already knows (Model.barLayoutSnapshot)
+// plus the Drawer as a fourth column of {id, state}. Without a board there is
+// no Drawer column. Both keys go into the board key, so a drag started on
+// either an old bar or an old drawer is dropped as stale by the board.
+function placementArrangeSnapshot(barSnapshot, board) {
+  if (!barSnapshot) return null
+  if (!board) return barSnapshot
+  var drawer = board.zones.drawer.map(function(slot) {
+    return Object.freeze({ id: slot.id, state: slot.state })
+  })
+  return Object.freeze({
+    key: barSnapshot.key + "|" + board.key,
+    layout: Object.freeze({
+      left: barSnapshot.layout.left, center: barSnapshot.layout.center, right: barSnapshot.layout.right,
+      drawer: Object.freeze(drawer)
+    }),
+    rows: barSnapshot.rows,
+    bar: barSnapshot,
+    placementKey: board.key
+  })
+}
+
+// A drop on the Arrange board, as either nothing for Placement (null: a move
+// between bar sections keeps the store's omarchy-bar path, given
+// `snapshot.bar`) or an intent for Placement's owner.
+function placementIntentFor(snapshot, fromSection, fromIndex, toSection, gap) {
+  if (!snapshot || !snapshot.placementKey) return null
+  if (fromSection !== "drawer" && toSection !== "drawer") return null
+  var entries = snapshot.layout[fromSection]
+  var entry = entries ? entries[fromIndex] : undefined
+  var id = placementEntryId(entry)
+  if (!id) return null
+  return { id: id, to: toSection, gap: gap, from: { zone: fromSection, index: fromIndex }, key: snapshot.placementKey }
+}
+
+function placementRemovalFor(snapshot, section, index) {
+  if (!snapshot || !snapshot.placementKey || section !== "drawer") return null
+  var entry = snapshot.layout.drawer[index]
+  if (!entry || !entry.id) return null
+  return { id: entry.id, to: "remove", from: { zone: "drawer", index: index }, key: snapshot.placementKey }
 }

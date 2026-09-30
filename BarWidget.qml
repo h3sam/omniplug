@@ -38,6 +38,10 @@ BarWidget {
     return PopupBridge.requestMove(root, snapshot, fromSection, fromIndex, section, gap, origin)
   }
 
+  function requestPopupPlacement(intent) {
+    return PopupBridge.requestPlacement(root, intent)
+  }
+
   function openPlacementView(origin, finalAttempt) {
     var target = panelLoader.item
     return !!target && typeof target.openPlacementView === "function"
