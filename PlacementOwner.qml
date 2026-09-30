@@ -78,9 +78,19 @@ Item {
     if (owner.waiting) return Object.freeze({ serial: owner.serial + 1, ok: false, phase: "refused",
       reason: "busy", note: Placement.PLACEMENT_NOTES.busy, id: id, touched: [], noOp: false })
     owner.serial++
+    // An offer may have been missed; ask the bridge once more before planning.
+    if (!owner.port.canCross && owner.port === livePort) {
+      var shared = PopupBridge.hostBar()
+      if (shared) livePort.hostBar = shared
+    }
     var facts = owner.placementFacts
     var plan = Placement.placementPlan(owner.currentConfig(), facts, intent)
-    if (!plan.ok) return owner.settle({ ok: false, phase: "refused", reason: plan.reason, note: plan.note, id: id })
+    if (!plan.ok) {
+      // Say exactly what is out of reach, so a refusal can be acted on.
+      var note = plan.reason === "needsBarAccess" && owner.port.problem
+        ? plan.note + " " + owner.port.problem : plan.note
+      return owner.settle({ ok: false, phase: "refused", reason: plan.reason, note: note, id: id })
+    }
     if (plan.noOp) return owner.settle({ ok: true, phase: "landed", noOp: true, id: id })
 
     var result

@@ -25,6 +25,10 @@ Item {
     try { return root && HostingModel.hostingCanWrite(root) ? root.shell : null } catch (error) { return null }
   }
   readonly property bool canCross: port.shellRoot !== null
+  // Why the writer is out of reach, in one sentence; "" when it is not.
+  readonly property string problem: {
+    try { return HostingModel.hostingWriterProblem(port.hostBar) } catch (error) { return String(error) }
+  }
   // Bindings on this re-evaluate whenever the host assigns a new config.
   readonly property var config: port.shellRoot ? port.shellRoot.shellConfig : null
 

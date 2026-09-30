@@ -14,38 +14,87 @@ var HOSTING_MAX_SCAN_NODES = 8000
 // the popout, and holds the widget registry. `shell` must be the real
 // ShellRoot (it has the config writer) for Placement to use it; a replacement
 // bar gets a facade there and can still host, but not write.
+//
+// registerModuleSlot is not required: it only keeps facades from being pruned,
+// and without it Hosting falls back to re-injecting them (the same test Bar
+// Drawer uses, so a bar it can host from, Omniplug can too).
+var HOSTING_BAR_MEMBERS = ["pluginBarApiFor", "requestPopout", "barWidgetRegistry"]
+
+function hostingMissingBarMembers(candidate) {
+  var missing = []
+  for (var i = 0; i < HOSTING_BAR_MEMBERS.length; i++) {
+    var name = HOSTING_BAR_MEMBERS[i]
+    var value = null
+    try { value = candidate ? candidate[name] : null } catch (error) { value = null }
+    if (name === "barWidgetRegistry" ? !value : typeof value !== "function") missing.push(name)
+  }
+  return missing
+}
+
 function hostingIsHostBar(candidate) {
-  return !!candidate
-    && typeof candidate.pluginBarApiFor === "function"
-    && typeof candidate.requestPopout === "function"
-    && typeof candidate.registerModuleSlot === "function"
-    && !!candidate.barWidgetRegistry
+  return !!candidate && hostingMissingBarMembers(candidate).length === 0
+}
+
+// "" when the Bar root's shell can write shell.json, else why not.
+function hostingWriterProblem(barRoot) {
+  if (!barRoot) return "Omniplug has not found the bar yet."
+  var shell = null
+  try { shell = barRoot.shell } catch (error) { shell = null }
+  if (!shell) return "The bar was found, but it has no shell to write through."
+  var mutate = null, config = null
+  try { mutate = shell.mutateShellConfig; config = shell.shellConfig } catch (error) {}
+  if (typeof mutate !== "function")
+    return "The bar was found, but its shell cannot write shell.json (no mutateShellConfig). Is a replacement bar in use?"
+  if (!config) return "The bar was found, but its shell has no config loaded yet."
+  return ""
 }
 
 function hostingCanWrite(barRoot) {
-  var shell = null
-  try { shell = barRoot ? barRoot.shell : null } catch (error) { shell = null }
-  return !!shell && typeof shell.mutateShellConfig === "function" && !!shell.shellConfig
+  return hostingWriterProblem(barRoot) === ""
 }
 
-function hostingFindHostBar(rootItem, maxNodes) {
-  if (!rootItem) return null
+// The same walk, reporting what it saw, for a diagnosis when nothing is found:
+//   { root, visited, bars, nearMiss } where bars counts items with a `bar`
+// and nearMiss names what the closest candidate lacked.
+function hostingSearchHostBar(rootItem, maxNodes) {
+  var report = { root: null, visited: 0, bars: 0, nearMiss: null, exhausted: false }
+  if (!rootItem) return report
   var limit = typeof maxNodes === "number" ? maxNodes : HOSTING_MAX_SCAN_NODES
   var stack = [rootItem]
-  var visited = 0
-  while (stack.length > 0 && visited < limit) {
+  while (stack.length > 0) {
+    if (report.visited >= limit) { report.exhausted = true; break }
     var node = stack.pop()
-    visited++
+    report.visited++
     if (!node) continue
     var candidate = null
     try { candidate = node.bar } catch (error) { candidate = null }
-    if (hostingIsHostBar(candidate)) return candidate
+    if (candidate) {
+      report.bars++
+      var missing = hostingMissingBarMembers(candidate)
+      if (missing.length === 0) { report.root = candidate; return report }
+      if (!report.nearMiss || missing.length < report.nearMiss.length) report.nearMiss = missing
+    }
     var kids = null
     try { kids = node.children } catch (error) { kids = null }
     if (!kids) continue
     for (var i = 0; i < kids.length; i++) stack.push(kids[i])
   }
-  return null
+  return report
+}
+
+function hostingFindHostBar(rootItem, maxNodes) {
+  return hostingSearchHostBar(rootItem, maxNodes).root
+}
+
+// One sentence for a search that found nothing.
+function hostingSearchProblem(report, hasWindow) {
+  if (!hasWindow) return "Omniplug's bar icon is not in a bar window yet."
+  if (!report || report.root) return ""
+  if (report.exhausted) return "Searched " + report.visited + " bar items without finding the bar (search limit reached)."
+  if (report.bars === 0)
+    return "No widget on this bar exposes the bar. Keep at least one built-in omarchy.* widget on it."
+  return "Widgets on this bar expose a bar object, but none has " + (report.nearMiss || []).join(", ")
+    + ". This Omarchy version may host widgets differently."
 }
 
 function hostingIsDescendant(item, ancestor) {
