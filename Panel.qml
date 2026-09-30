@@ -85,6 +85,7 @@ Panel {
     function onRowsLoaded() {
       root.clampSelection()
       if (root.placementRefreshStarted) root.placementRowsReady = true
+      root.offerPlacementFacts()
     }
   }
 
@@ -235,6 +236,13 @@ Panel {
   readonly property var placementOwner: popupMoveOwner && popupMoveOwner.placement ? popupMoveOwner.placement : null
   readonly property var arrangeSnapshot: Placement.placementArrangeSnapshot(barSnapshot,
     placementOwner ? placementOwner.board : null)
+  // This popup often has the plugin list before the expanded window does;
+  // Placement needs it (kinds, built-in or not) to stow anything.
+  function offerPlacementFacts() {
+    if (placementOwner && typeof placementOwner.offerFacts === "function")
+      placementOwner.offerFacts(Placement.placementFactsFromRows(store.rows))
+  }
+  onPlacementOwnerChanged: offerPlacementFacts()
   readonly property bool barMovePending: !!popupMoveOwner && popupMoveOwner.pending
   readonly property bool arrangeBusy: !popupMoveOwner || popupMoveOwner.busy || barMovePending
     || busy || store.actionRunning || contentFlipping || !opened || !arrangeOpen

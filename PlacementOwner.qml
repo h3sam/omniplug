@@ -18,8 +18,13 @@ Item {
   visible: false
 
   property string selfId: ""
-  // { id: { name, kinds, firstParty } } from the store's rows, or null.
+  // { id: { name, kinds, firstParty } } from this window's store rows, or
+  // null until it has loaded them. The popup usually loads its list first, so
+  // any surface with rows offers them too; this window's own win when present.
   property var facts: null
+  property var offeredFacts: null
+  readonly property var effectiveFacts: owner.facts ? owner.facts : owner.offeredFacts
+  function offerFacts(facts) { if (facts) owner.offeredFacts = facts }
   // Omniplug's scoped shell facade: barConfig and updateEntryInline.
   property var facadeShell: null
   // LiveShellConfig here; FakeShellConfig in tests.
@@ -41,7 +46,7 @@ Item {
   readonly property var config: owner.port.config ? owner.port.config
     : owner.facadeShell && owner.facadeShell.barConfig ? { bar: owner.facadeShell.barConfig } : null
   readonly property var placementFacts: ({
-    selfId: owner.selfId, plugins: owner.facts, canCross: owner.port.canCross, partial: owner.partial
+    selfId: owner.selfId, plugins: owner.effectiveFacts, canCross: owner.port.canCross, partial: owner.partial
   })
   readonly property var board: owner.config ? Placement.placementBoard(owner.config, owner.placementFacts) : null
 

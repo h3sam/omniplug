@@ -260,6 +260,10 @@ Arrange already had plus Placement's drawer.
 - **The owner is a single Placement object** in the retained, keepLoaded
   Expanded panel, reached from the popup through PopupBridge. That is today's
   move-owner pattern.
+- **Plugin facts.** Placement needs the plugin list (kinds, built-in or not)
+  for anything that touches carriers. The expanded window loads its list only
+  when opened, so any surface that has loaded rows offers them to the owner
+  (`offerFacts`); the window's own list wins once it has one.
 - **Rebuilds.** A structural write rebuilds every bar widget, including
   Omniplug's popup, so callers hold no closures across a write. They re-read
   `board` and the last ticket.

@@ -176,3 +176,18 @@ class PlacementOwnerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlacementOwnerFactsTest(PlacementOwnerTest):
+    """The popup offers its plugin list when this window has none yet."""
+
+    def test_offered_facts_stand_in_until_this_window_has_its_own(self):
+        facts = self.js("JSON.stringify(owner.facts)")
+        self.js("owner.facts = null")
+        self.assertEqual(self.js("owner.board.canStow"), False)
+        refused = json.loads(self.js('JSON.stringify(owner.request({id: "acme.vpn", to: "drawer"}))'))
+        self.assertEqual(refused["reason"], "unreadable")
+        self.js("owner.offerFacts(%s)" % facts)
+        self.assertEqual(self.js("owner.board.canStow"), True)
+        ticket = json.loads(self.js('JSON.stringify(owner.request({id: "acme.vpn", to: "drawer"}))'))
+        self.assertEqual(ticket["phase"], "landed")
