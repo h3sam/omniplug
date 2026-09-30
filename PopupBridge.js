@@ -122,7 +122,9 @@ function openPopup(screenName) {
     }
   }
   if (!chosen) return false
-  chosen.open()
+  // Collapsing the expanded window lands on the manager, not the drawer.
+  if (typeof chosen.openManager === "function") chosen.openManager(false)
+  else chosen.open()
   return true
 }
 

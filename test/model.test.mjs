@@ -5483,7 +5483,7 @@ test("the popup's settings pane owns the same switch and writes through the bar'
   assert.match(restore, /=== "list"\s*&& !root\.settingsOpen/)
   const flip = panel.slice(panel.indexOf("function switchTab(tab)"), panel.indexOf("function applyPendingTab()"))
   assert.match(flip, /closeDetails\(\)\s*closeSettings\(\)/)
-  assert.match(panel, /if \(!opened\) \{ placementRefreshStarted = false; detailsEntry = null; settingsOpen = false; arrangeOpen = false; barBoard\.cancelDrag\(\); revokeReleaseNavigation\(\); return \}/)
+  assert.match(panel, /if \(!opened\) \{ fromDrawer = false; placementRefreshStarted = false; detailsEntry = null; settingsOpen = false; arrangeOpen = false; barBoard\.cancelDrag\(\); revokeReleaseNavigation\(\); return \}/)
 })
 
 test("the expanded panel opens as a tiled window when the setting says so, and as the overlay otherwise", () => {

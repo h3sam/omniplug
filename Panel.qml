@@ -42,6 +42,8 @@ Panel {
   // widget.
   property var hostWidget: null
   property var popupMoveOwner: null
+  // Opened from the Drawer's Manage button: the header offers the way back.
+  property bool fromDrawer: false
   readonly property var barIdentity: hostWidget || root
 
   // Guarded so the panel renders before the bar is injected (the bar-widget
@@ -751,7 +753,7 @@ Panel {
   property bool titleIconIntroArmed: false
 
   onOpenedChanged: {
-    if (!opened) { placementRefreshStarted = false; detailsEntry = null; settingsOpen = false; arrangeOpen = false; barBoard.cancelDrag(); revokeReleaseNavigation(); return }
+    if (!opened) { fromDrawer = false; placementRefreshStarted = false; detailsEntry = null; settingsOpen = false; arrangeOpen = false; barBoard.cancelDrag(); revokeReleaseNavigation(); return }
     titleIconIntro.stop()
     titleIcon.opacity = 0
     titleIconIntroArmed = true
@@ -819,11 +821,27 @@ Panel {
           width: parent.width
           height: Math.max(title.implicitHeight, refreshButton.height)
 
+          // Back to the Drawer, when that is where this popup came from.
+          PanelActionButton {
+            id: drawerBackButton
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.fromDrawer
+            width: visible ? implicitWidth : 0
+            iconText: "󰁍"
+            fontSize: Style.font.display
+            tooltipText: "Back to the drawer"
+            foreground: root.contentForeground
+            fontFamily: root.contentFontFamily
+            onClicked: if (root.hostWidget && typeof root.hostWidget.openDrawer === "function") root.hostWidget.openDrawer()
+          }
+
           Text {
             id: titleIcon
-            // Same puzzle-piece glyph as the plugin manager's bar button.
+            // Same puzzle-piece glyph as the bar button.
             textFormat: Text.PlainText
-            anchors.left: parent.left
+            anchors.left: drawerBackButton.visible ? drawerBackButton.right : parent.left
+            anchors.leftMargin: drawerBackButton.visible ? Style.space(6) : 0
             anchors.baseline: title.baseline
             text: "󰐱"
             color: root.contentForeground

@@ -540,7 +540,8 @@ test("Installed return uses live panel readiness and user navigation cancels inv
   assert.equal(s.placementRefreshStarted, false)
   for (const action of ["close", "togglePanel", "closeForPopoutSwitch"]) {
     let cancelled = 0
-    const state = { cancelPopupArrange() { cancelled++ }, panelLoader: { item: null } }
+    const state = { cancelPopupArrange() { cancelled++ }, panelLoader: { item: null },
+      drawerOpen: false, openDrawer() {}, closeDrawer() {}, stage: { deferPopoutSwitch() { return false } } }
     call(widgetSource, action, state)
     assert.equal(cancelled, 1)
   }
