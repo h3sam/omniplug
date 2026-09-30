@@ -1,10 +1,43 @@
-# Plugin Manager
+# Omniplug
 
 An Omarchy bar widget that manages your plugins from the bar: browse the
 marketplace, install from it — choosing where in the bar each widget goes —
 and enable, disable, update, or remove what you already have. It opens as a
 popup under the bar and expands, on request, into a full-size panel with a
 details pane.
+
+Omniplug is a fork of [Plugin Manager](https://github.com/juancasanueva/omarchy-plugin-manager)
+by Juan Casanueva, with one addition so far: a **Drawer** for the bar widgets
+you seldom use. A scrollable Dashboard comes next. The design is in
+[docs/design/m1-drawer.md](docs/design/m1-drawer.md).
+
+## The Drawer
+
+Click the puzzle icon and the Drawer opens under it: the widgets you stowed
+off the bar, running live exactly as they did in it, in the order you
+arranged them. Click one and its own popup opens, with the Drawer still under
+it; closing the Drawer closes that popup too. **Manage** in the Drawer's
+header opens the plugin manager described below, and its back arrow returns.
+
+To stow a widget, open **Arrange** and drag it into the **Drawer** column;
+drag it back to a section to put it on the bar again. Every widget lives in
+exactly one place. In the manager, a stowed widget's switch turns it off and
+on again without losing its spot, and the "where should it go?" question
+offers the Drawer as an answer. A stowed widget that is uninstalled or fails
+to load stays as a `⚠` placeholder saying why, until you remove it with the
+`✕` in Arrange; nothing is cleaned up behind your back.
+
+How it works, briefly: Omniplug keeps the Drawer's order in its own entry in
+`~/.config/omarchy/shell.json` (`drawer: [...]`), keeps each stowed widget
+enabled with a `plugins[]` entry that also holds its settings, and marks a
+switched-off one in `disabledPlugins`, so the host's own `omarchy plugin
+enable`/`disable` agree with it. Hosting another plugin's widget relies on
+the bar's internals rather than a public API, the same way Bar Drawer and
+Groups do, so keep at least one built-in `omarchy.*` widget on the bar:
+Arrange refuses to stow the last one. Hotkeys that summon a stowed widget's
+panel are not supported yet.
+
+Everything below describes the manager itself, as inherited.
 
 ![kind: bar-widget](https://img.shields.io/badge/kind-bar--widget-informational)
 
@@ -115,7 +148,7 @@ window you started it from. Catalog parsing, enrichment and initial sorting run
 in an isolated offscreen Quickshell process; the desktop receives bounded result
 frames instead of hosting a WorkerScript.
 One consequence of the extra kind: the shell now routes
-`omarchy-shell shell toggle io.github.juancasanueva.plugin-manager` to the
+`omarchy-shell shell toggle io.github.h3sam.omniplug` to the
 expanded panel, which makes it the thing to bind a hotkey to, while the bar
 button still opens the popup.
 
@@ -299,7 +332,7 @@ stored as `tiledExpandedPanel: true` in the same entry, written the same way.
 
 One Hyprland note: the window carries the shell's own app id rather than one of
 its own, so a per-window rule has to match its title:
-`windowrule = float, title:^(Plugin Manager)$` is what would undo the tiling
+`windowrule = float, title:^(Omniplug)$` is what would undo the tiling
 for it.
 
 **Restart Shell**, the button under the three switches, clears Quickshell's
@@ -421,7 +454,7 @@ moves, revoked verification, malformed metadata, or unavailable objects refuse
 rather than silently choosing another target.
 
 Staging lives in a private 0700 transaction under
-`~/.config/omarchy/plugin-manager-updates/txn-<random>/`, outside plugin discovery
+`~/.config/omarchy/omniplug-updates/txn-<random>/`, outside plugin discovery
 and on the same filesystem. The helper uses isolated, hook-free Git, checks the
 snapshot tree and manifest id, and runs the host validator **before** publishing.
 An update exchanges the installed directory with the staged checkout using Linux
@@ -606,7 +639,7 @@ and simulated mount identities, never host mounts or live update roots.
 
 At **exactly 32 active entries**, the next install or update first archives
 provably completed transactions into
-`~/.config/omarchy/plugin-manager-updates-archive/txn-<same-id>/`. Below that
+`~/.config/omarchy/omniplug-updates-archive/txn-<same-id>/`. Below that
 threshold, nothing is archived. Only exact `installed` or `updated` results
 qualify: the published result, original request, prepared identities and
 backup layout must agree, with no `refused.json` marker. Reload, enable or
@@ -622,7 +655,7 @@ automatically pruned or enumerated by the helper.
 
 **Archived journals keep their historical absolute backup paths.** If the
 recorded active path no longer exists, look under
-`~/.config/omarchy/plugin-manager-updates-archive/<same txn>/checkout` and inspect
+`~/.config/omarchy/omniplug-updates-archive/<same txn>/checkout` and inspect
 the journals beside it. Do not blindly reuse a stale `backup` string.
 
 Inspect `request.json`, `prepared.json` (directory device/inode identities),
@@ -637,7 +670,7 @@ final rechecks do not make concurrent external edits race-free.
 Keep backups until reviewed, and recover manually only after preserving the
 current checkout. If 32 entries remain unresolved, or discovery encounters a
 33rd entry, further installs/updates refuse with a README recovery hint. Review
-`~/.config/omarchy/plugin-manager-updates/` and manually move only transactions
+`~/.config/omarchy/omniplug-updates/` and manually move only transactions
 you have understood and preserved; the helper never guesses about incomplete
 history. Discovery inspects at most 32 direct entries under the existing helper
 lock, and successful archival requires a fresh capacity count before proceeding.
@@ -754,7 +787,7 @@ from, generated by
 [HANCORE-linux/omarchy-plugin-marketplace](https://github.com/HANCORE-linux/omarchy-plugin-marketplace)
 (MIT). It is read from the cache when the panel opens and fetched when that
 cache is missing or stale, projected down to the fields this panel uses, and
-cached for six hours in `~/.cache/omarchy-plugin-manager/`. A failed automatic
+cached for six hours in `~/.cache/omniplug/`. A failed automatic
 fetch falls back to the cached copy — a stale storefront beats an apparently
 empty one. The refresh button forces a re-fetch; if it fails, Browse shows a
 refresh error and keeps the catalog already on screen. Retry Refresh to check
@@ -862,27 +895,38 @@ bar shows `[BACKSPACE] BACK` alongside the `1` and `2` tab shortcuts.
 
 ## Install
 
-```bash
-omarchy plugin add https://github.com/juancasanueva/omarchy-plugin-manager.git --enable
-```
-
-Then move it if it did not land where you want it:
-
-```bash
-omarchy bar move io.github.juancasanueva.plugin-manager --section right
-```
-
-## Remove
+If you have the upstream Plugin Manager installed, remove it first so the bar
+does not carry two managers:
 
 ```bash
 omarchy plugin remove io.github.juancasanueva.plugin-manager --yes
 ```
 
-That deletes `~/.config/omarchy/plugins/io.github.juancasanueva.plugin-manager`
+Omniplug keeps its own update data and cache (`~/.config/omarchy/omniplug-updates*`,
+`~/.cache/omniplug/`), so nothing the upstream manager retained is touched or
+reused.
+
+```bash
+omarchy plugin add https://github.com/h3sam/omniplug.git --enable
+```
+
+Then move it if it did not land where you want it:
+
+```bash
+omarchy bar move io.github.h3sam.omniplug --section right
+```
+
+## Remove
+
+```bash
+omarchy plugin remove io.github.h3sam.omniplug --yes
+```
+
+That deletes `~/.config/omarchy/plugins/io.github.h3sam.omniplug`
 and takes the widget out of your bar. The catalog cache at
-`~/.cache/omarchy-plugin-manager/` and transactions/backups under
-`~/.config/omarchy/plugin-manager-updates/` and
-`~/.config/omarchy/plugin-manager-updates-archive/` survive removal. An already accepted
+`~/.cache/omniplug/` and transactions/backups under
+`~/.config/omarchy/omniplug-updates/` and
+`~/.config/omarchy/omniplug-updates-archive/` survive removal. An already accepted
 finite update also continues through finalization. Review retained transactions
 before removing or moving them; the manager never automatically deletes backups.
 
@@ -890,7 +934,7 @@ To take it off the bar without uninstalling it, use the panel's own disable
 button, or:
 
 ```bash
-omarchy plugin disable io.github.juancasanueva.plugin-manager
+omarchy plugin disable io.github.h3sam.omniplug
 ```
 
 ## Requirements
@@ -923,10 +967,10 @@ Only on an explicit action: enabling/disabling edits shell configuration via
 host commands, and installation/removal uses host commands. Pinned updates
 write private staging, transaction records and retained original checkouts,
 and atomically exchange one plugin directory. At the active transaction limit,
-pinned installs/updates can create `~/.config/omarchy/plugin-manager-updates-archive/`
+pinned installs/updates can create `~/.config/omarchy/omniplug-updates-archive/`
 and move completed transaction directories there, preserving all recovery data.
 Archival does not edit shell.json or change installed plugins.
-The Browse cache at `~/.cache/omarchy-plugin-manager/` is written automatically
+The Browse cache at `~/.cache/omniplug/` is written automatically
 when the catalog is missing or stale, through owner-checked no-follow
 directory descriptors with a descriptor-relative atomic rename, never through
 a path a symlink could redirect.
@@ -938,15 +982,15 @@ the guardian itself can leave this temporary state behind.
 ## Develop
 
 The plugin directory must live at
-`~/.config/omarchy/plugins/io.github.juancasanueva.plugin-manager`. Saving any
+`~/.config/omarchy/plugins/io.github.h3sam.omniplug`. Saving any
 file under `~/.config/omarchy/plugins/` hot-reloads the plugin code.
 
 ```bash
-omarchy plugin validate ~/.config/omarchy/plugins/io.github.juancasanueva.plugin-manager
+omarchy plugin validate ~/.config/omarchy/plugins/io.github.h3sam.omniplug
 qmllint -I /usr/share/omarchy/shell BarWidget.qml Panel.qml Expanded.qml
 
 omarchy-shell shell rescanPlugins
-omarchy-shell shell toggle io.github.juancasanueva.plugin-manager '{}'
+omarchy-shell shell toggle io.github.h3sam.omniplug '{}'
 ```
 
 ### Catalog shutdown workaround

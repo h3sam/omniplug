@@ -255,3 +255,42 @@ class BarLayoutUI(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DrawerColumnUI(BarLayoutUI):
+    """The same board with Omniplug's Drawer as a fourth column."""
+
+    def setUp(self):
+        super().setUp()
+        self.view.resize(840, 330)
+        self.root.setProperty("sections", ["left", "center", "right", "drawer"])
+        self.removals = []
+        self.root.removeRequested.connect(lambda snapshot, section, index: self.removals.append((section, index)))
+        self.load({"left": ["one", "same", "same"], "center": ["clock"], "right": [],
+                   "drawer": [{"id": "vpn", "state": "live"}, {"id": "gone", "state": "missing"},
+                              {"id": "quiet", "state": "off"}]})
+        QTest.qWait(30)
+
+    def test_dragging_into_the_drawer_reports_the_drawer_and_a_gap(self):
+        start = self.press("left", 0)
+        QTest.mouseMove(self.view, start + QPoint(0, 20), 10)
+        self.drop(self.point("drawer", 1, 0.1))
+        self.assertEqual(len(self.moves), 1)
+        _, source, index, target, gap = self.moves[0]
+        self.assertEqual((source, index, target, gap), ("left", 0, "drawer", 1))
+
+    def test_drawer_cards_show_their_state_and_placeholders_can_be_removed(self):
+        self.assertEqual(self.item("row-drawer-2").property("entryState"), "off")
+        self.assertEqual(self.item("row-drawer-1").property("entryState"), "missing")
+        column = self.item("viewport-drawer")
+        pitch = self.root.property("rowHeight") + self.root.property("spacing")
+        remove = column.mapToScene(QPoint(int(column.property("width")) - 8,
+                                          int(pitch + self.root.property("rowHeight") / 2))).toPoint()
+        QTest.mouseClick(self.view, Qt.LeftButton, Qt.NoModifier, remove)
+        self.assertEqual(self.removals, [("drawer", 1)])
+        self.assertEqual(self.moves, [], "the remove control never starts a drag")
+        # A live card's right edge is an ordinary drag handle.
+        live = column.mapToScene(QPoint(int(column.property("width")) - 8,
+                                        int(self.root.property("rowHeight") / 2))).toPoint()
+        QTest.mouseClick(self.view, Qt.LeftButton, Qt.NoModifier, live)
+        self.assertEqual(self.removals, [("drawer", 1)])

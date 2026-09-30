@@ -28,7 +28,7 @@ class UpdateDataTests(unittest.TestCase):
         self.home = Path(self.tmp.name) / "home"
         self.home.mkdir(mode=0o700)
         self.root = self.home / ".config/omarchy"
-        self.active = self.root / "plugin-manager-updates"
+        self.active = self.root / "omniplug-updates"
         self.updater = u.Updater(home=str(self.home))
 
     def test_missing_config_reports_zero_without_creating_it(self):
@@ -37,7 +37,7 @@ class UpdateDataTests(unittest.TestCase):
             "schemaVersion": 1, "available": True,
             "paths": {"plugins": str(self.root / "plugins"),
                       "active": str(self.active),
-                      "archive": str(self.root / "plugin-manager-updates-archive")},
+                      "archive": str(self.root / "omniplug-updates-archive")},
             "activeCount": 0, "lowerBound": False, "limit": 32, "error": ""})
         self.assertEqual(list(self.home.iterdir()), [])
         self.assertEqual(self.updater.fds, [])
@@ -113,7 +113,7 @@ class UpdateDataTests(unittest.TestCase):
         self.assertNotIn("untrusted", json.dumps(result))
 
     def test_unsafe_components_are_unavailable_not_empty(self):
-        for component in (".config", ".config/omarchy", ".config/omarchy/plugin-manager-updates"):
+        for component in (".config", ".config/omarchy", ".config/omarchy/omniplug-updates"):
             for kind in ("symlink", "file", "writable", "foreign"):
                 with self.subTest(component=component, kind=kind), tempfile.TemporaryDirectory() as tmp:
                     home = Path(tmp) / "home"
@@ -287,7 +287,7 @@ class CompletedDeletionTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.home = Path(self.tmp.name) / "home"
         self.root = self.home / ".config/omarchy"
-        self.active = self.root / "plugin-manager-updates"
+        self.active = self.root / "omniplug-updates"
         self.archive = self.root / u.ARCHIVE_NAME
         self.active.mkdir(parents=True, mode=0o700)
         self.archive.mkdir(mode=0o700)
@@ -797,7 +797,7 @@ class CompletedDeletionTests(unittest.TestCase):
         self.addCleanup(fixture.doCleanups)
         worker = fixture.updater()
         self.assertEqual(worker.execute(fixture.request)["status"], "updated")
-        active = fixture.home / ".config/omarchy/plugin-manager-updates"
+        active = fixture.home / ".config/omarchy/omniplug-updates"
         tx = next(active.iterdir())
         for name in ("index-before", "index-final"):
             self.assertEqual((tx / name).read_bytes()[:4], b"DIRC")
@@ -1107,7 +1107,7 @@ class CleanupCommandTests(unittest.TestCase):
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
         self.assertEqual(fixture.updater().execute(fixture.request)["status"], "updated")
-        active = fixture.home / ".config/omarchy/plugin-manager-updates"
+        active = fixture.home / ".config/omarchy/omniplug-updates"
         archive = active.parent / u.ARCHIVE_NAME
         archive.mkdir(mode=0o700)
         tx = next(active.iterdir())

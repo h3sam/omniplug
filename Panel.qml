@@ -4,6 +4,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
+import "Placement.js" as Placement
 
 // The plugin manager's popup: every plugin the shell discovered, split into
 // what you installed and what ships with Omarchy, with the three lifecycle
@@ -31,8 +32,8 @@ import "Model.js" as Model
 // against.
 Panel {
   id: root
-  moduleName: "io.github.juancasanueva.plugin-manager"
-  ipcTarget: "io.github.juancasanueva.plugin-manager"
+  moduleName: "io.github.h3sam.omniplug"
+  ipcTarget: "io.github.h3sam.omniplug"
   manageIpc: false
 
   property var anchorItem: null
@@ -42,6 +43,8 @@ Panel {
   // widget.
   property var hostWidget: null
   property var popupMoveOwner: null
+  // Opened from the Drawer's Manage button: the header offers the way back.
+  property bool fromDrawer: false
   readonly property var barIdentity: hostWidget || root
 
   // Guarded so the panel renders before the bar is injected (the bar-widget
@@ -62,6 +65,7 @@ Panel {
 
   PluginStore {
     id: store
+    placement: root.placementOwner
     externalBusy: !!root.popupMoveOwner && root.popupMoveOwner.busy
     selfId: root.moduleName
     // The sanctioned way to write this plugin's shell.json entry (settings).
@@ -81,10 +85,13 @@ Panel {
     function onRowsLoaded() {
       root.clampSelection()
       if (root.placementRefreshStarted) root.placementRowsReady = true
+      root.offerPlacementFacts()
     }
   }
 
-  property alias rows: store.rows
+  // What the rows show: the loaded list with stowed widgets marked on (or
+  // off) in the drawer, which the plugin list alone would call off.
+  readonly property var rows: Model.withStowed(store.rows, placementOwner ? placementOwner.board : null)
   property alias loading: store.loading
   property alias loadError: store.loadError
   property int selectedIndex: -1
@@ -225,6 +232,17 @@ Panel {
   property bool settingsOpen: false
   property bool arrangeOpen: false
   readonly property var barSnapshot: popupMoveOwner ? popupMoveOwner.snapshot : null
+  // The expanded window's Placement owner, which writes every Drawer change.
+  readonly property var placementOwner: popupMoveOwner && popupMoveOwner.placement ? popupMoveOwner.placement : null
+  readonly property var arrangeSnapshot: Placement.placementArrangeSnapshot(barSnapshot,
+    placementOwner ? placementOwner.board : null)
+  // This popup often has the plugin list before the expanded window does;
+  // Placement needs it (kinds, built-in or not) to stow anything.
+  function offerPlacementFacts() {
+    if (placementOwner && typeof placementOwner.offerFacts === "function")
+      placementOwner.offerFacts(Placement.placementFactsFromRows(store.rows))
+  }
+  onPlacementOwnerChanged: offerPlacementFacts()
   readonly property bool barMovePending: !!popupMoveOwner && popupMoveOwner.pending
   readonly property bool arrangeBusy: !popupMoveOwner || popupMoveOwner.busy || barMovePending
     || busy || store.actionRunning || contentFlipping || !opened || !arrangeOpen
@@ -312,6 +330,27 @@ Panel {
     return hostWidget.requestPopupMove(snapshot, fromSection, fromIndex, section, gap)
   }
 
+  // A drop that involves the Drawer goes to Placement's owner; a move between
+  // bar sections keeps the omarchy-bar path above.
+  function requestArrangeMove(snapshot, fromSection, fromIndex, section, gap) {
+    var intent = Placement.placementIntentFor(snapshot, fromSection, fromIndex, section, gap)
+    if (!intent) return requestBarMove(snapshot && snapshot.bar ? snapshot.bar : snapshot, fromSection, fromIndex, section, gap)
+    return requestPlacement(intent)
+  }
+
+  function requestArrangeRemove(snapshot, section, index) {
+    var intent = Placement.placementRemovalFor(snapshot, section, index)
+    return intent ? requestPlacement(intent) : false
+  }
+
+  function requestPlacement(intent) {
+    if (!opened || !arrangeOpen || contentFlipping || busy || store.actionRunning || !popupMoveOwner
+        || popupMoveOwner.busy || popupMoveOwner.pending || !hostWidget
+        || typeof hostWidget.requestPopupPlacement !== "function") return false
+    var ticket = hostWidget.requestPopupPlacement(intent)
+    return !!ticket && ticket.ok
+  }
+
   function useCurrentLayout() {
     if (!opened || !arrangeOpen || !popupMoveOwner || !popupMoveOwner.pending
         || !popupMoveOwner.exited || !popupMoveOwner.snapshot) return false
@@ -379,7 +418,7 @@ Panel {
 
   // The id the shell knows this plugin by — the same literal the bar widget
   // answers IPC on — so the popup can ask for its own expanded window.
-  readonly property string pluginId: "io.github.juancasanueva.plugin-manager"
+  readonly property string pluginId: "io.github.h3sam.omniplug"
 
   // Hand over to the expanded window on the tab you were looking at. Close
   // first: the popup and the panel are never up together. A bar without a
@@ -751,7 +790,7 @@ Panel {
   property bool titleIconIntroArmed: false
 
   onOpenedChanged: {
-    if (!opened) { placementRefreshStarted = false; detailsEntry = null; settingsOpen = false; arrangeOpen = false; barBoard.cancelDrag(); revokeReleaseNavigation(); return }
+    if (!opened) { fromDrawer = false; placementRefreshStarted = false; detailsEntry = null; settingsOpen = false; arrangeOpen = false; barBoard.cancelDrag(); revokeReleaseNavigation(); return }
     titleIconIntro.stop()
     titleIcon.opacity = 0
     titleIconIntroArmed = true
@@ -819,11 +858,27 @@ Panel {
           width: parent.width
           height: Math.max(title.implicitHeight, refreshButton.height)
 
+          // Back to the Drawer, when that is where this popup came from.
+          PanelActionButton {
+            id: drawerBackButton
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.fromDrawer
+            width: visible ? implicitWidth : 0
+            iconText: "󰁍"
+            fontSize: Style.font.display
+            tooltipText: "Back to the drawer"
+            foreground: root.contentForeground
+            fontFamily: root.contentFontFamily
+            onClicked: if (root.hostWidget && typeof root.hostWidget.openDrawer === "function") root.hostWidget.openDrawer()
+          }
+
           Text {
             id: titleIcon
-            // Same puzzle-piece glyph as the plugin manager's bar button.
+            // Same puzzle-piece glyph as the bar button.
             textFormat: Text.PlainText
-            anchors.left: parent.left
+            anchors.left: drawerBackButton.visible ? drawerBackButton.right : parent.left
+            anchors.leftMargin: drawerBackButton.visible ? Style.space(6) : 0
             anchors.baseline: title.baseline
             text: "󰐱"
             color: root.contentForeground
@@ -1927,15 +1982,20 @@ Panel {
           anchors.top: arrangeStatus.bottom
           anchors.topMargin: Style.space(12)
           anchors.bottom: parent.bottom
-          snapshot: root.barSnapshot
-          busy: root.arrangeBusy
+          snapshot: root.arrangeSnapshot
+          sections: root.arrangeSnapshot && root.arrangeSnapshot.placementKey
+            ? ["left", "center", "right", "drawer"] : ["left", "center", "right"]
+          busy: root.arrangeBusy || (!!root.placementOwner && root.placementOwner.busy)
           labels: {
             var labels = Object.create(null)
             for (var row of root.rows) labels[row.id] = row.name
             return labels
           }
           onMoveRequested: function(snapshot, fromSection, rawIndex, targetSection, preRemovalGap) {
-            root.requestBarMove(snapshot, fromSection, rawIndex, targetSection, preRemovalGap)
+            root.requestArrangeMove(snapshot, fromSection, rawIndex, targetSection, preRemovalGap)
+          }
+          onRemoveRequested: function(snapshot, section, index) {
+            root.requestArrangeRemove(snapshot, section, index)
           }
           fill: Color.menu.background
           rowFill: Style.normalFill

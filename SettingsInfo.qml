@@ -17,7 +17,7 @@ Column {
   required property color foreground
   required property color secondaryForeground
   required property string fontFamily
-  readonly property string repositoryUrl: "https://github.com/juancasanueva/omarchy-plugin-manager"
+  readonly property string repositoryUrl: "https://github.com/h3sam/omniplug"
   readonly property string versionLabel: Model.releaseVersionLabel(installedVersion)
 
   // The store supplies validated passwd-home paths, independently of $HOME.
@@ -192,7 +192,7 @@ Column {
       Text {
         width: parent.width
         textFormat: Text.PlainText
-        text: "Plugin Manager"
+        text: "Omniplug"
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
@@ -241,7 +241,7 @@ Column {
       Text {
         width: parent.width
         textFormat: Text.PlainText
-        text: "Juan Casanueva"
+        text: "h3sam, from Plugin Manager by Juan Casanueva"
         color: root.secondaryForeground
         font.family: root.fontFamily
         font.pixelSize: Style.font.body

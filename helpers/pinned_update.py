@@ -77,7 +77,7 @@ MAX_PLUGINS = 4 * 1024 * 1024
 # joined with the anonymous engagement stats, reused for six hours. The
 # schema version keeps an older cache from silently omitting a field the
 # current UI requires; the key list is the projection contract.
-CACHE_DIR = (".cache", "omarchy-plugin-manager")
+CACHE_DIR = (".cache", "omniplug")
 CACHE_FILE = "catalog.json"
 CACHE_TTL = 6 * 60 * 60
 PROJECTION_SCHEMA = 2
@@ -89,9 +89,9 @@ PROJECTED_KEYS = ("id", "name", "description", "author", "version", "category", 
 MAX_TREE = 16 * 1024 * 1024
 MAX_DISK = 128 * 1024 * 1024
 TRANSACTION_LIMIT = 32
-ARCHIVE_NAME = "plugin-manager-updates-archive"
+ARCHIVE_NAME = "omniplug-updates-archive"
 MAX_UPDATE_STATUS = 8192
-CAPACITY_REASON = ("Transaction limit: review ~/.config/omarchy/plugin-manager-updates "
+CAPACITY_REASON = ("Transaction limit: review ~/.config/omarchy/omniplug-updates "
                    "using README recovery guidance before retrying")
 ARCHIVE_REASON = ("Archive unsafe or incomplete: inspect active and archived transactions "
                   "using README recovery guidance before retrying")
@@ -438,7 +438,7 @@ class CleanupLock:
                     and cleanup_mount_id(archive) == cleanup_mount_id(fd),
                     "Cleanup root crosses a mount")
         try:
-            active = worker.hold(checked_dir(fd, "plugin-manager-updates", private=True))
+            active = worker.hold(checked_dir(fd, "omniplug-updates", private=True))
         except FileNotFoundError:
             worker.check_anchors()
             if archive is None:
@@ -446,12 +446,12 @@ class CleanupLock:
             worker.recheck_directory(fd, ARCHIVE_NAME, archive)
             worker.checkpoint("cleanup-create-lock-root")
             # EEXIST is a race, not permission to adopt a different lock root.
-            os.mkdir("plugin-manager-updates", 0o700, dir_fd=fd)
-            created = os.stat("plugin-manager-updates", dir_fd=fd, follow_symlinks=False)
-            active = worker.hold(checked_dir(fd, "plugin-manager-updates", private=True))
+            os.mkdir("omniplug-updates", 0o700, dir_fd=fd)
+            created = os.stat("omniplug-updates", dir_fd=fd, follow_symlinks=False)
+            active = worker.hold(checked_dir(fd, "omniplug-updates", private=True))
             require(identity(active) == (created.st_dev, created.st_ino), "Cleanup root changed")
             os.fsync(fd)
-        worker.anchors.append((fd, "plugin-manager-updates", identity(active)))
+        worker.anchors.append((fd, "omniplug-updates", identity(active)))
         worker.state = active
         return active
 
@@ -466,7 +466,7 @@ class CleanupLock:
                 return self
             require(self.state is not None, "Active update directory missing")
             self.root = self.worker.anchors[-1][0]
-            self.parents[self.state] = "plugin-manager-updates"
+            self.parents[self.state] = "omniplug-updates"
             self.mount = cleanup_mount_id(self.root)
             self.device = os.fstat(self.root).st_dev
             self.check()
@@ -1029,10 +1029,10 @@ class Updater:
         observing it does not acquire a lock or authorize a future mutation.
         """
         fd = self.open_home()
-        for part in (".config", "omarchy", "plugin-manager-updates"):
+        for part in (".config", "omarchy", "omniplug-updates"):
             self.checkpoint("status-root")
             try:
-                child = self.hold(checked_dir(fd, part, private=part == "plugin-manager-updates"))
+                child = self.hold(checked_dir(fd, part, private=part == "omniplug-updates"))
             except FileNotFoundError:
                 return None
             self.anchors.append((fd, part, identity(child)))
@@ -1054,7 +1054,7 @@ class Updater:
                     and all(p not in ("", ".", "..") for p in self.home.split("/")[1:]),
                     "Unsupported home path")
             root = self.home + "/.config/omarchy/"
-            result["paths"] = {"plugins": root + "plugins", "active": root + "plugin-manager-updates",
+            result["paths"] = {"plugins": root + "plugins", "active": root + "omniplug-updates",
                                "archive": root + ARCHIVE_NAME}
             active = self.open_update_root()
             count = 0 if active is None else len(self.active_transactions())
@@ -1096,17 +1096,17 @@ class Updater:
             self.original = self.hold(checked_dir(self.plugins, plugin_id))
             self.anchors.append((self.plugins, plugin_id, identity(self.original)))
         try:
-            os.mkdir("plugin-manager-updates", 0o700, dir_fd=fd)
+            os.mkdir("omniplug-updates", 0o700, dir_fd=fd)
             os.fsync(fd)
         except FileExistsError:
             pass
-        self.state = self.hold(checked_dir(fd, "plugin-manager-updates", private=True))
+        self.state = self.hold(checked_dir(fd, "omniplug-updates", private=True))
         require(os.fstat(self.state).st_dev == os.fstat(self.plugins).st_dev, "Staging must share filesystem")
         try:
             fcntl.flock(self.state, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as error:
             raise Refused("Another pinned update is running") from error
-        self.anchors.append((fd, "plugin-manager-updates", identity(self.state)))
+        self.anchors.append((fd, "omniplug-updates", identity(self.state)))
         self.archive_at_capacity()
 
     def active_transactions(self):
@@ -1171,7 +1171,7 @@ class Updater:
             finally:
                 os.close(checkout)
             expected = {"status": "updated", "backup": self.home
-                        + "/.config/omarchy/plugin-manager-updates/" + name + "/checkout"}
+                        + "/.config/omarchy/omniplug-updates/" + name + "/checkout"}
         require(records["published"] == expected and records["result"] == expected,
                 "Incomplete or contradictory result")
         return evidence
@@ -1222,7 +1222,7 @@ class Updater:
                         archive = self.open_archive()
                     self.checkpoint("before-archive")
                     self.check_anchors()
-                    self.recheck_directory(self.omarchy, "plugin-manager-updates", self.state)
+                    self.recheck_directory(self.omarchy, "omniplug-updates", self.state)
                     self.recheck_directory(self.omarchy, ARCHIVE_NAME, archive)
                     self.recheck_directory(self.state, name, tx)
                     require(self.completed_record(tx, name) == evidence, "History changed")
@@ -1233,7 +1233,7 @@ class Updater:
                     os.fsync(self.state)
                     os.fsync(archive)
                     self.check_anchors()
-                    self.recheck_directory(self.omarchy, "plugin-manager-updates", self.state)
+                    self.recheck_directory(self.omarchy, "omniplug-updates", self.state)
                     self.recheck_directory(self.omarchy, ARCHIVE_NAME, archive)
                     self.recheck_directory(archive, name, tx)
                     require(self.absent(self.state, name)
@@ -1459,7 +1459,7 @@ class Updater:
         self.deadline = time.monotonic() + 5
         self.cancelled = False
         try:
-            self.run(["/usr/bin/notify-send", "--app-name=Plugin Manager", "--",
+            self.run(["/usr/bin/notify-send", "--app-name=Omniplug", "--",
                       ("Pinned plugin install" if request_kind(request) == "install"
                        else "Pinned plugin update")
                       + ("" if request.get("verified", True) else " (unverified)"),
@@ -1601,7 +1601,7 @@ class Updater:
             if request["verified"]:
                 authorize(self.catalog_bytes(), request)
             stage, fetched = self.stage_snapshot(request)
-            self.backup = self.home + "/.config/omarchy/plugin-manager-updates/" + self.transaction + "/checkout"
+            self.backup = self.home + "/.config/omarchy/omniplug-updates/" + self.transaction + "/checkout"
             self.git(stage, "merge-base", "--is-ancestor", request["expectedLocalHead"], fetched)
             require(fetched != request["expectedLocalHead"], "Already at the requested commit")
             base_tree = self.tree(stage, request["expectedLocalHead"])

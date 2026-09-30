@@ -499,8 +499,8 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual((Path(second["backup"]) / "Main.qml").read_text(), "verified")
 
     def test_real_install_and_update_journals_allow_the_next_transaction_at_capacity(self):
-        state = self.home / ".config/omarchy/plugin-manager-updates"
-        archive = self.home / ".config/omarchy/plugin-manager-updates-archive"
+        state = self.home / ".config/omarchy/omniplug-updates"
+        archive = self.home / ".config/omarchy/omniplug-updates-archive"
         # All four histories come from execute(), not just synthetic schemas.
         for request in (self.install, self.request):
             result = self.updater().execute(request)
@@ -555,7 +555,7 @@ class TransactionTests(unittest.TestCase):
         self.assertTrue(os.WIFSIGNALED(status))
         deadline = time.monotonic() + 5
         records = []
-        state = self.home / ".config/omarchy/plugin-manager-updates"
+        state = self.home / ".config/omarchy/omniplug-updates"
         while time.monotonic() < deadline:
             records = list(state.glob("txn-*/result.json")) if state.exists() else []
             if records:
@@ -611,7 +611,7 @@ class TransactionTests(unittest.TestCase):
         with self.assertRaises(u.Refused):
             updater.execute(self.request)
         self.assertEqual(updater.reason, "Dirty, untracked or ignored files present")
-        state = self.home / ".config/omarchy/plugin-manager-updates"
+        state = self.home / ".config/omarchy/omniplug-updates"
         records = list(state.glob("txn-*/refused.json"))
         self.assertEqual(len(records), 1)
         self.assertEqual(json.loads(records[0].read_text()), {"reason": updater.reason})
@@ -677,7 +677,7 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual(self.git("-C", str(self.new_plugin), "rev-parse", "--abbrev-ref", "HEAD"), "HEAD")
         self.assertTrue(self.reloaded)
         self.assertEqual(self.enabled, [(NEW_ID, "right")])
-        state = self.home / ".config/omarchy/plugin-manager-updates"
+        state = self.home / ".config/omarchy/omniplug-updates"
         transactions = list(state.glob("txn-*"))
         self.assertEqual(len(transactions), 1)
         # The checkout left the transaction; only the journal stays behind.
@@ -789,7 +789,7 @@ class TransactionTests(unittest.TestCase):
         # Whoever won the race keeps their directory untouched.
         self.assertEqual(sorted(p.name for p in self.new_plugin.iterdir()), ["theirs.txt"])
         self.assertEqual(self.enabled, [])
-        state = self.home / ".config/omarchy/plugin-manager-updates"
+        state = self.home / ".config/omarchy/omniplug-updates"
         transactions = list(state.glob("txn-*"))
         self.assertEqual(len(transactions), 1)
         # The staged checkout stays in the unpublished transaction, journaled.
@@ -808,7 +808,7 @@ class TransactionTests(unittest.TestCase):
         result = updater.execute(self.install)
         self.assertEqual(result, {"status": "installed; enable failed"})
         self.assertEqual((self.new_plugin / "BarWidget.qml").read_text(), "verified snapshot")
-        state = self.home / ".config/omarchy/plugin-manager-updates"
+        state = self.home / ".config/omarchy/omniplug-updates"
         record = next(iter(state.glob("txn-*/result.json")))
         self.assertEqual(json.loads(record.read_text()), {"status": "installed; enable failed"})
         # A rescan failure stops before enable and says so instead.
@@ -900,7 +900,7 @@ class TransactionTests(unittest.TestCase):
         self.assertTrue(self.reloaded)
         self.assertEqual(self.enabled, [(NEW_ID, "right")])
         # The journal records the shape the panel sent, with no derived key.
-        state = self.home / ".config/omarchy/plugin-manager-updates"
+        state = self.home / ".config/omarchy/omniplug-updates"
         journaled = json.loads(next(iter(state.glob("txn-*/request.json"))).read_text())
         self.assertEqual(journaled, self.tip_install)
         self.assertNotIn("target", journaled)
@@ -987,7 +987,7 @@ class CatalogCacheTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.home = Path(self.tmp.name) / "home"
         self.home.mkdir(mode=0o700)
-        self.cache_dir = self.home / ".cache/omarchy-plugin-manager"
+        self.cache_dir = self.home / ".cache/omniplug"
         self.remote = {"generatedAt": "remote", "plugins": [
             dict(id="acme.clock", name="Clock", addedAt="2026-08-20",
                  listedAt="2026-08-20T12:34:56.789Z")]}
@@ -1446,9 +1446,9 @@ class ArchivalTests(unittest.TestCase):
         self.home = Path(tmp.name) / "home"
         self.omarchy = self.home / ".config/omarchy"
         (self.omarchy / "plugins/acme.plugin").mkdir(parents=True)
-        self.state = self.omarchy / "plugin-manager-updates"
+        self.state = self.omarchy / "omniplug-updates"
         self.state.mkdir(mode=0o700)
-        self.archive = self.omarchy / "plugin-manager-updates-archive"
+        self.archive = self.omarchy / "omniplug-updates-archive"
 
     def record(self, tx, name, value):
         path = tx / (name + ".json")
@@ -1503,7 +1503,7 @@ class ArchivalTests(unittest.TestCase):
         with self.assertRaises(u.Refused) as caught:
             self.preflight()
         reason = u.reason_text(caught.exception)
-        self.assertIn("~/.config/omarchy/plugin-manager-updates", reason)
+        self.assertIn("~/.config/omarchy/omniplug-updates", reason)
         self.assertIn("README", reason)
         self.assertLess(len(reason), 200)
 

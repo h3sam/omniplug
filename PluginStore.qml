@@ -216,8 +216,13 @@ Item {
   // by the time the clone lands the surface no longer exists to be asked.
   property string pendingPlacement: ""
 
+  // Omniplug's Placement owner (PlacementOwner.qml), which writes every
+  // Drawer change; null until the surface has one. See docs/design/m1-drawer.md.
+  property var placement: null
+  readonly property bool canStowInDrawer: !!placement && !!placement.board && placement.board.canStow === true
+
   readonly property var placementChoices: pendingKind === "move"
-    ? Model.moveOptions(pendingSection) : Model.placementOptions()
+    ? Model.moveOptions(pendingSection) : Model.placementOptions(canStowInDrawer && !pendingPlacementNeeded)
   readonly property string placementMessage: pendingKind === "move"
     ? "Move " + pendingLabel + " to which section of the bar?"
     : "Where in the bar should " + pendingLabel + " go?"
@@ -406,7 +411,7 @@ Item {
 
   // ---- Catalog ------------------------------------------------------------
 
-  // The helper owns the cache: it opens ~/.cache/omarchy-plugin-manager by
+  // The helper owns the cache: it opens ~/.cache/omniplug by
   // owner-checked no-follow descriptors, reads the projection through them
   // and publishes a fresh one with a descriptor-relative rename, so nothing
   // here names a cache path a symlink could redirect. Same scrubbed
@@ -645,9 +650,9 @@ Item {
     + "set -u -o pipefail; "
     + "summary=\"$1\"; detail=\"$2\"; shift 2; "
     + "if ! err=$(\"$@\" 2>&1 >/dev/null | tail -1); then "
-    + "  notify-send -a 'Plugin Manager' \"$summary failed\" \"$err\"; exit 1; "
+    + "  notify-send -a 'Omniplug' \"$summary failed\" \"$err\"; exit 1; "
     + "fi; "
-    + "notify-send -a 'Plugin Manager' \"$summary\" \"$detail\""
+    + "notify-send -a 'Omniplug' \"$summary\" \"$detail\""
 
   // ---- Asking -------------------------------------------------------------
   //
@@ -695,8 +700,17 @@ Item {
 
   // Enabling is not destructive and needs no "are you sure" — but a bar widget
   // has to be told where it goes, and only the user knows that.
+  // A stowed widget turns back on where it was, through Placement.
+  function placeStowed(row, to) {
+    if (!placement || busy) return false
+    var ticket = placement.request({ id: String(row.id), to: to })
+    setStatus(ticket.note, !ticket.ok, "layout")
+    return ticket.ok
+  }
+
   function askEnable(row) {
     if (!Model.canEnable(row) || busy) return false
+    if (row.stowed === true) return placeStowed(row, "drawer")
 
     if (!Model.needsPlacement(row)) {
       // A service, an overlay, or a whole-bar plugin: nothing to place, so the
@@ -717,6 +731,8 @@ Item {
   // one exception: the surface's own row, whose Enable button leaves with it.
   function askDisable(row) {
     if (!Model.canDisable(row) || busy) return false
+    // Off, but Omniplug remembers its drawer spot for when it comes back on.
+    if (row.stowed === true) return placeStowed(row, "off")
 
     if (row.id === selfId) {
       pendingId = row.id
@@ -784,6 +800,10 @@ Item {
       // that is no longer there would either fail or, worse, hit whatever now
       // carries that id.
       setStatus("Could not enable " + label + ": it is no longer in the list", true)
+      return
+    }
+    if (section === "drawer") {
+      placeStowed(row, "drawer")
       return
     }
     startEnable(row, section)
@@ -1351,7 +1371,7 @@ Item {
       // read, one object or nothing; the id is this plugin's fixed manifest id.
       + "printf '===settings===\\n'; "
       + "head -c 1048577 -- \"$HOME/.config/omarchy/shell.json\" 2>/dev/null "
-      + "  | jq -c --arg id io.github.juancasanueva.plugin-manager "
+      + "  | jq -c --arg id io.github.h3sam.omniplug "
       + "    '[(.bar.layout // {} | .[]? | .[]?), (.plugins // [] | .[]?)] "
       + "     | map(select(type == \"object\" and (.id | tostring) == $id)) | first // empty' 2>/dev/null; "
       // Which section every bar widget sits in, as one array on one line, so
@@ -1448,7 +1468,7 @@ Item {
     + "trap 'cleanup' EXIT; arm_signal_traps; "
     + "umask 077; owner_token=; IFS= read -r owner_token < /proc/sys/kernel/random/uuid 2>/dev/null || owner_token=; "
     + "case \"$owner_token\" in ''|*[!0-9a-f-]*) owner_token=\"${RANDOM}${RANDOM}${RANDOM}${RANDOM}\" ;; esac; "
-    + "owner_prefix=\"omarchy-plugin-manager-updates.$$.$owner_token\"; "
+    + "owner_prefix=\"omniplug-updates.$$.$owner_token\"; "
     + "make_tmpdir() { temp_root=\"$1\"; attempt=0; "
     + "  while [ \"$attempt\" -lt 8 ]; do tmpdir=\"$temp_root/$owner_prefix.$attempt\"; "
     + "    if mkdir -m 700 -- \"$tmpdir\" 2>/dev/null; then return 0; fi; "

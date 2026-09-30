@@ -3061,7 +3061,7 @@ test("release probe start failure clears busy state and uses the active fallback
 
 test("Settings About links use the existing navigation owners and release helpers", () => {
   const info = readFileSync(new URL("../SettingsInfo.qml", import.meta.url), "utf8")
-  assert.match(info, /readonly property string repositoryUrl: "https:\/\/github\.com\/juancasanueva\/omarchy-plugin-manager"/)
+  assert.match(info, /readonly property string repositoryUrl: "https:\/\/github\.com\/h3sam\/omniplug"/)
   assert.match(info, /Model\.releaseVersionLabel\(installedVersion\)/)
   assert.match(info, /Model\.githubReleaseCandidates\(root\.repositoryUrl, root\.installedVersion\)/)
   assert.match(info, /root\.repositoryNavigationRequested\(root\.repositoryUrl\)/)
@@ -3692,7 +3692,7 @@ test("Panel delegates data, processes and actions to PluginStore", () => {
   const panel = readFileSync(new URL("../Panel.qml", import.meta.url), "utf8")
   const store = readFileSync(new URL("../PluginStore.qml", import.meta.url), "utf8")
 
-  assert.match(panel, /PluginStore \{\s*id: store\s*externalBusy: !!root\.popupMoveOwner && root\.popupMoveOwner\.busy\s*selfId: root\.moduleName(?:\s*\/\/[^\n]*)*\s*shell: root\.bar \? root\.bar\.shell : null\s*\}/)
+  assert.match(panel, /PluginStore \{\s*id: store\s*placement: root\.placementOwner\s*externalBusy: !!root\.popupMoveOwner && root\.popupMoveOwner\.busy\s*selfId: root\.moduleName(?:\s*\/\/[^\n]*)*\s*shell: root\.bar \? root\.bar\.shell : null\s*\}/)
   // Every process and script lives in the store; the panel keeps only the
   // release probe, which is about navigation rather than data.
   for (const id of ["loadProc", "updateProc", "catalogProc", "actionProc"]) {
@@ -3713,10 +3713,12 @@ test("Panel delegates data, processes and actions to PluginStore", () => {
   // State the surface binds to is aliased, so existing bindings read the
   // store without naming it.
   for (const name of [
-    "rows", "loading", "loadError", "checkingUpdates", "catalog", "catalogLoading",
+    "loading", "loadError", "checkingUpdates", "catalog", "catalogLoading",
     "catalogLoaded", "catalogError", "previewsSupported", "busyKind", "busyRowId",
     "busyId", "status", "statusIsError"
   ]) assert.match(panel, new RegExp(`property alias ${name}: store\\.${name}\\b`), name)
+  // Rows are the store's, with stowed widgets shown on (or off) in the drawer.
+  assert.match(panel, /readonly property var rows: Model\.withStowed\(store\.rows, placementOwner \? placementOwner\.board : null\)/)
   for (const name of ["busy", "verifiedIds", "behindCount", "installedTotal", "updateActionsEnabled"])
     assert.match(panel, new RegExp(`readonly property (alias|\\w+) ${name}: store\\.${name}\\b`), name)
   // Thin wrappers keep the keyboard handler and buttons untouched, and keep
@@ -3949,12 +3951,12 @@ test("the catalog is served by the pinned helper through an owner-checked cache,
   const helper = readFileSync(new URL("../helpers/pinned_update.py", import.meta.url), "utf8")
 
   // The fetch, projection and six-hour cache moved into the helper, which
-  // opens ~/.cache/omarchy-plugin-manager by descriptor and publishes with a
+  // opens ~/.cache/omniplug by descriptor and publishes with a
   // descriptor-relative rename. No path-named mkdir/mktemp/mv remains in QML.
   assert.doesNotMatch(store, /catalogScript|\$HOME\/\.cache|mktemp|mv \\"\$tmp\\"|jq -c --argjson schema/)
   assert.doesNotMatch(store, /MARKETPLACE_STATS_URL|CATALOG_URL/)
   assert.match(helper, /MARKETPLACE_STATS_URL = "https:\/\/api\.omarchyplugins\.com\/v1\/stats"/)
-  assert.match(helper, /CACHE_DIR = \("\.cache", "omarchy-plugin-manager"\)/)
+  assert.match(helper, /CACHE_DIR = \("\.cache", "omniplug"\)/)
   assert.match(helper, /os\.rename\(name, CACHE_FILE, src_dir_fd=cache, dst_dir_fd=cache\)/)
 
   // loadCatalog runs the helper with the exact request shape it validates,
@@ -4887,7 +4889,7 @@ test("the store owns the pending confirmation flow for both windows", () => {
     assert.equal(Model[fn]("add", "x"), Model[fn]("nonsense", "x"), fn + " keeps no dead add branch")
   assert.match(store, /readonly property bool confirming: pendingKind !== "" && pendingKind !== "place"/)
   assert.match(store, /readonly property bool placing: pendingKind === "place"/)
-  assert.match(store, /readonly property var placementChoices: pendingKind === "move"\s*\? Model\.moveOptions\(pendingSection\) : Model\.placementOptions\(\)/)
+  assert.match(store, /readonly property var placementChoices: pendingKind === "move"\s*\? Model\.moveOptions\(pendingSection\) : Model\.placementOptions\(canStowInDrawer && !pendingPlacementNeeded\)/)
   assert.match(store, /readonly property string placementMessage:/)
   assert.match(store, /readonly property string confirmMessage: \{/)
   for (const fn of [
@@ -4906,7 +4908,7 @@ test("the store owns the pending confirmation flow for both windows", () => {
   assert.match(store, /runAction\("remove", pendingLabel, \["omarchy", "plugin", "remove", pendingId, "--yes"\]\)/)
 
   // The popup keeps its bindings through aliases and thin wrappers.
-  assert.match(panel, /PluginStore \{\s*id: store\s*externalBusy: !!root\.popupMoveOwner && root\.popupMoveOwner\.busy\s*selfId: root\.moduleName(?:\s*\/\/[^\n]*)*\s*shell: root\.bar \? root\.bar\.shell : null\s*\}/)
+  assert.match(panel, /PluginStore \{\s*id: store\s*placement: root\.placementOwner\s*externalBusy: !!root\.popupMoveOwner && root\.popupMoveOwner\.busy\s*selfId: root\.moduleName(?:\s*\/\/[^\n]*)*\s*shell: root\.bar \? root\.bar\.shell : null\s*\}/)
   for (const name of ["pendingKind", "pendingId", "pendingLabel", "pendingUrl", "pendingVerifiedCommit", "pendingPlacementNeeded", "pendingPlacement"])
     assert.match(panel, new RegExp(`property alias ${name}: store\\.${name}\\b`), name)
   for (const name of ["confirming", "placing", "placementChoices", "placementMessage", "confirmMessage"])
@@ -4923,7 +4925,7 @@ test("the store owns the pending confirmation flow for both windows", () => {
 
 test("the popup's expand button hands the current tab to the shell panel", () => {
   const panel = readFileSync(new URL("../Panel.qml", import.meta.url), "utf8")
-  assert.match(panel, /readonly property string pluginId: "io\.github\.juancasanueva\.plugin-manager"/)
+  assert.match(panel, /readonly property string pluginId: "io\.github\.h3sam\.omniplug"/)
   const button = panel.slice(panel.indexOf("id: expandButton"), panel.indexOf("id: refreshButton"))
   assert.match(button, /anchors\.right: refreshButton\.left/)
   assert.match(button, /anchors\.rightMargin: Style\.space\(6\)/)
@@ -4948,7 +4950,7 @@ test("the expanded window is a layer-shell overlay that the shell summons and hi
   assert.match(expanded, /property var shell: null/)
   assert.match(expanded, /property var manifest: null/)
   assert.match(expanded, /property bool opened: false/)
-  assert.match(expanded, /PluginStore \{\s*id: store\s*watchConfig: root\.opened\s*selfId: root\.pluginId\s*(\/\/[^\n]*\n\s*)*shell: root\.shell\s*\}/)
+  assert.match(expanded, /PluginStore \{\s*id: store\s*watchConfig: root\.opened\s*selfId: root\.pluginId\s*(\/\/[^\n]*\n\s*)*shell: root\.shell\s*placement: placementOwner\s*\}/)
 
   const window = expanded.slice(expanded.indexOf("PanelWindow {"), expanded.indexOf("PanelWindow {") + 700)
   assert.match(window, /visible: root\.opened/)
@@ -5251,7 +5253,7 @@ test("the plugin's own entry is kept whole for writing and null when it could no
 })
 
 test("the expanded panel's window type is the boolean true only, read from shell.json as the loader's jq reads it", () => {
-  const id = "io.github.juancasanueva.plugin-manager"
+  const id = "io.github.h3sam.omniplug"
 
   // Same strictness as the other two settings, and no key stands in for another.
   assert.equal(Model.tiledExpandedPanel({ tiledExpandedPanel: true }), true)
@@ -5370,7 +5372,7 @@ test("the expanded window's settings face owns the one switch and reads back thr
   assert.match(store, /loadError = "Could not read the plugin list"[\s\S]{0,200}selfEntryLoaded = false/)
   assert.ok(store.indexOf("printf '===settings===") < store.indexOf("printf '===list==="), "settings lead the load stream")
   assert.ok(store.includes('head -c 1048577 -- \\"$HOME/.config/omarchy/shell.json\\" 2>/dev/null'), "bounded read of the host config")
-  assert.match(store, /jq -c --arg id io\.github\.juancasanueva\.plugin-manager/)
+  assert.match(store, /jq -c --arg id io\.github\.h3sam\.omniplug/)
   // Saving hands the host the whole entry as loaded, with the one key
   // changed: arrays, objects and long strings the strict view does not
   // carry all survive, since the host replaces the entry outright.
@@ -5483,7 +5485,7 @@ test("the popup's settings pane owns the same switch and writes through the bar'
   assert.match(restore, /=== "list"\s*&& !root\.settingsOpen/)
   const flip = panel.slice(panel.indexOf("function switchTab(tab)"), panel.indexOf("function applyPendingTab()"))
   assert.match(flip, /closeDetails\(\)\s*closeSettings\(\)/)
-  assert.match(panel, /if \(!opened\) \{ placementRefreshStarted = false; detailsEntry = null; settingsOpen = false; arrangeOpen = false; barBoard\.cancelDrag\(\); revokeReleaseNavigation\(\); return \}/)
+  assert.match(panel, /if \(!opened\) \{ fromDrawer = false; placementRefreshStarted = false; detailsEntry = null; settingsOpen = false; arrangeOpen = false; barBoard\.cancelDrag\(\); revokeReleaseNavigation\(\); return \}/)
 })
 
 test("the expanded panel opens as a tiled window when the setting says so, and as the overlay otherwise", () => {
@@ -5517,7 +5519,7 @@ test("the expanded panel opens as a tiled window when the setting says so, and a
   const tiled = expanded.slice(expanded.indexOf("FloatingWindow {"), expanded.indexOf("BorderSurface {"))
   assert.match(tiled, /id: tiledWindow/)
   assert.match(tiled, /visible: root\.opened && root\.tiled/)
-  assert.match(tiled, /title: "Plugin Manager"/)
+  assert.match(tiled, /title: "Omniplug"/)
   assert.match(tiled, /color: Color\.menu\.background/)
   assert.match(tiled, /minimumSize: Qt\.size\(640, 480\)/)
   assert.doesNotMatch(tiled, /scrim/)
@@ -5554,7 +5556,7 @@ test("the expanded panel opens as a tiled window when the setting says so, and a
 
   const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8")
   assert.match(readme, /\*\*Open expanded panel as a tiled window\*\*/)
-  assert.match(readme, /windowrule = float, title:\^\(Plugin Manager\)\$/)
+  assert.match(readme, /windowrule = float, title:\^\(Omniplug\)\$/)
 })
 
 // ---- Moving a bar widget between sections ---------------------------------
@@ -5666,7 +5668,7 @@ test("the store moves a widget through the placement question or straight from a
   assert.match(store, /readonly property bool confirming: pendingKind !== "" && pendingKind !== "place" && pendingKind !== "move"/)
   assert.match(store, /readonly property bool placing: pendingKind === "place" \|\| pendingKind === "move"/)
   assert.match(store, /property string pendingSection: ""/)
-  assert.match(store, /readonly property var placementChoices: pendingKind === "move"\s*\? Model\.moveOptions\(pendingSection\) : Model\.placementOptions\(\)/)
+  assert.match(store, /readonly property var placementChoices: pendingKind === "move"\s*\? Model\.moveOptions\(pendingSection\) : Model\.placementOptions\(canStowInDrawer && !pendingPlacementNeeded\)/)
   assert.match(store, /"Move " \+ pendingLabel \+ " to which section of the bar\?"/)
   assert.match(store, /function askMove\(row\) \{\s*if \(!Model\.canMove\(row\) \|\| busy\) return false[\s\S]*?pendingSection = String\(row\.barSection \|\| ""\)\s*pendingKind = "move"\s*return true/)
   // Detached like enable: the layout rewrite tears the popup down.
@@ -5729,7 +5731,8 @@ test("popup positioning stays in Arrange without dead Installed row wiring", () 
   assert.doesNotMatch(panel, /askMove|onMoveRequested: \{/)
   assert.match(panel, /tooltipText: "Arrange"/)
   assert.match(panel, /onClicked: root\.arrangeOpen \? root\.closeArrange\(\) : root\.openArrange\(\)/)
-  assert.match(panel, /root\.requestBarMove\(snapshot, fromSection, rawIndex, targetSection, preRemovalGap\)/)
+  assert.match(panel, /root\.requestArrangeMove\(snapshot, fromSection, rawIndex, targetSection, preRemovalGap\)/)
+  assert.match(panel, /if \(!intent\) return requestBarMove\(snapshot && snapshot\.bar \? snapshot\.bar : snapshot, fromSection, fromIndex, section, gap\)/)
   for (const index of ["index", "globalIndex"]) {
     for (const action of ["Enable", "Disable"])
       assert.ok(panel.includes(`on${action}Requested: {\n                root.selectedIndex = ${index}\n                root.ask${action}(modelData)`), `${action} remains for ${index}`)
@@ -5749,4 +5752,26 @@ test("the popup row hides its update button unless an update is installable or r
   const details = readFileSync(new URL("../InstalledDetails.qml", import.meta.url), "utf8")
   const detailsButton = details.slice(details.indexOf("id: updateButton"), details.indexOf("id: updateButton") + 400)
   assert.match(detailsButton, /visible: root\.row \? root\.row\.updatable === true : false/)
+})
+
+test("stowed rows read as on (unless switched off) and live in the drawer", () => {
+  const M = Function(source + "; return { withStowed, placementOptions, canEnable, canDisable, canMove }")()
+  const rows = [
+    { id: "acme.vpn", enabled: false, barSection: "", canDisable: false, kinds: ["bar-widget"] },
+    { id: "acme.off", enabled: false, barSection: "", canDisable: false, kinds: ["bar-widget"] },
+    { id: "omarchy.clock", enabled: true, barSection: "center", canDisable: true, kinds: ["bar-widget"] }
+  ]
+  const board = { zones: { drawer: [{ id: "acme.vpn", state: "live" }, { id: "acme.off", state: "off" }] } }
+  const shown = M.withStowed(rows, board)
+  assert.deepEqual(shown.map(r => [r.id, r.enabled, r.barSection, r.stowed === true]),
+    [["acme.vpn", true, "drawer", true], ["acme.off", false, "drawer", true], ["omarchy.clock", true, "center", false]])
+  assert.equal(shown[2], rows[2], "rows that are not stowed are the same objects")
+  assert.equal(rows[0].enabled, false, "the loaded rows are not touched")
+  assert.equal(M.canDisable(shown[0]), true)
+  assert.equal(M.canEnable(shown[1]), true)
+  assert.equal(M.canMove(shown[0]), false, "the section mover does not apply to the drawer")
+  assert.equal(M.withStowed(rows, null), rows)
+  assert.equal(M.withStowed(rows, { zones: { drawer: [] } }), rows)
+  assert.deepEqual(M.placementOptions().map(o => o.value), ["left", "center", "right"])
+  assert.deepEqual(M.placementOptions(true).map(o => o.value), ["left", "center", "right", "drawer"])
 })

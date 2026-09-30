@@ -6,6 +6,7 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 import "PopupBridge.js" as PopupBridge
+import "Placement.js" as Placement
 
 // The plugin manager with room: the same inventory and the same marketplace
 // as the popup, as a full-size overlay the shell summons on request.
@@ -38,7 +39,7 @@ Item {
   }
 
   readonly property string pluginId: manifest && manifest.id
-    ? String(manifest.id) : "io.github.juancasanueva.plugin-manager"
+    ? String(manifest.id) : "io.github.h3sam.omniplug"
 
   // Which window hosts this open: the layer-shell overlay, or a plain toplevel
   // the compositor tiles. Decided once in open() and fixed for the life of that
@@ -76,11 +77,22 @@ Item {
     selfId: root.pluginId
     // The sanctioned way to write this plugin's shell.json entry (settings).
     shell: root.shell
+    placement: placementOwner
   }
 
   Connections {
     target: store
     function onRowsLoaded() { root.clampSelection() }
+  }
+
+  // The one writer of Drawer changes, for this window and every popup (they
+  // reach it through PopupBridge). Retained with this window, so it outlives
+  // the bar rebuild a change can cause. See docs/design/m1-drawer.md.
+  PlacementOwner {
+    id: placementOwner
+    selfId: root.pluginId
+    facadeShell: root.shell
+    facts: Placement.placementFactsFromRows(store.rows)
   }
 
   // ---- Lifecycle (called by the shell) --------------------------------------
@@ -177,7 +189,9 @@ Item {
 
   // ---- Shared state, mirrored from the store ---------------------------------
 
-  property alias rows: store.rows
+  // What the rows show: the loaded list with stowed widgets marked on (or
+  // off) in the drawer, which the plugin list alone would call off.
+  readonly property var rows: Model.withStowed(store.rows, placementOwner.board)
   property alias loading: store.loading
   property alias loadError: store.loadError
   property alias checkingUpdates: store.checkingUpdates
@@ -505,6 +519,9 @@ Item {
       return root.startPopupMove(snapshot, fromSection, fromIndex, section, gap)
     }
     function recover() { return root.recoverPopupMove() }
+    readonly property var placement: placementOwner
+    function place(intent) { return root.placeFromArrange(intent) }
+    function hostBarOffered(barRoot) { placementOwner.hostBarOffered(barRoot) }
   }
 
   // Register after construction without summoning or reading configuration.
@@ -542,6 +559,43 @@ Item {
   function requestBarMove(snapshot, fromSection, fromIndex, section, gap) {
     if (!opened || !arrangeOpen || contentFlipping || busy) return false
     return store.startBarMove(snapshot, fromSection, fromIndex, section, gap)
+  }
+
+  // Arrange's board: the bar plus the Drawer column when Placement has a board.
+  readonly property var arrangeSnapshot: Placement.placementArrangeSnapshot(root.barSnapshot, placementOwner.board)
+
+  // A drop that involves the Drawer goes to Placement; a move between bar
+  // sections keeps the omarchy-bar path above.
+  function requestArrangeMove(snapshot, fromSection, fromIndex, section, gap) {
+    var intent = Placement.placementIntentFor(snapshot, fromSection, fromIndex, section, gap)
+    if (!intent) return requestBarMove(snapshot && snapshot.bar ? snapshot.bar : snapshot, fromSection, fromIndex, section, gap)
+    if (!opened || !arrangeOpen || contentFlipping || busy) return false
+    var ticket = placeFromArrange(intent)
+    return !!ticket && ticket.ok
+  }
+
+  function requestArrangeRemove(snapshot, section, index) {
+    var intent = Placement.placementRemovalFor(snapshot, section, index)
+    if (!intent || !opened || !arrangeOpen || contentFlipping || busy) return false
+    var ticket = placeFromArrange(intent)
+    return !!ticket && ticket.ok
+  }
+
+  // Both surfaces' Drawer changes land here, so the status line they share
+  // (store.status, also the popup's popupMoveOwner.status) says what happened.
+  function placeFromArrange(intent) {
+    if (store.busy || barMovePending) return null
+    var ticket = placementOwner.request(intent)
+    if (ticket.note !== "") store.setStatus(ticket.note, !ticket.ok, "layout")
+    return ticket
+  }
+
+  Connections {
+    target: placementOwner
+    function onTicketChanged() {
+      var ticket = placementOwner.ticket
+      if (ticket && ticket.phase === "unconfirmed") store.setStatus(ticket.note, true, "layout")
+    }
   }
 
   function useCurrentLayout() {
@@ -666,7 +720,7 @@ Item {
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.namespace: "plugin-manager"
+    WlrLayershell.namespace: "omniplug"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
@@ -687,7 +741,7 @@ Item {
   FloatingWindow {
     id: tiledWindow
     visible: root.opened && root.tiled
-    title: "Plugin Manager"
+    title: "Omniplug"
     color: Color.menu.background
     minimumSize: Qt.size(640, 480)
     implicitWidth: Style.space(1180)
@@ -1774,15 +1828,20 @@ Item {
           anchors.top: arrangeRecovery.bottom
           anchors.topMargin: Style.space(16)
           anchors.bottom: parent.bottom
-          snapshot: root.barSnapshot
+          snapshot: root.arrangeSnapshot
+          sections: root.arrangeSnapshot && root.arrangeSnapshot.placementKey
+            ? ["left", "center", "right", "drawer"] : ["left", "center", "right"]
           labels: {
             var labels = Object.create(null)
             for (var row of root.rows) labels[row.id] = row.name
             return labels
           }
-          busy: root.busy || root.contentFlipping || !root.opened
+          busy: root.busy || root.contentFlipping || !root.opened || placementOwner.busy
           onMoveRequested: function(snapshot, fromSection, fromIndex, section, gap) {
-            root.requestBarMove(snapshot, fromSection, fromIndex, section, gap)
+            root.requestArrangeMove(snapshot, fromSection, fromIndex, section, gap)
+          }
+          onRemoveRequested: function(snapshot, section, index) {
+            root.requestArrangeRemove(snapshot, section, index)
           }
           fill: Color.menu.background
           rowFill: Style.normalFill

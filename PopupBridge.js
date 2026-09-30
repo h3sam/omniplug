@@ -11,18 +11,33 @@
 .pragma library
 
 var widgets = []
+// When each widget registered, parallel to `widgets`: a placement write that
+// rebuilds the bar must reopen Arrange on the rebuilt widget, not on the one
+// it is about to destroy.
+var serials = []
+var serial = 0
 var moveOwner = null
+// The built-in bar's single root, once any Omniplug widget has found it (see
+// LiveBarPort.qml). Kept only as a live QML object reference and re-checked
+// by every reader; a shell reload destroys it and the next reader looks again.
+var sharedHostBar = null
 // Never retain a popup closure or a move plan here; the store owns dispatch.
 var continuation = null
 
 function register(widget) {
-  if (widget && widgets.indexOf(widget) < 0) widgets.push(widget)
+  if (widget && widgets.indexOf(widget) < 0) {
+    widgets.push(widget)
+    serials.push(++serial)
+  }
   if (widget && typeof widget.setMoveOwner === "function") widget.setMoveOwner(moveOwner)
 }
 
 function unregister(widget) {
   var index = widgets.indexOf(widget)
-  if (index >= 0) widgets.splice(index, 1)
+  if (index >= 0) {
+    widgets.splice(index, 1)
+    serials.splice(index, 1)
+  }
   if (widget && typeof widget.setMoveOwner === "function") widget.setMoveOwner(null)
 }
 
@@ -31,6 +46,8 @@ function registerOwner(owner) {
   cancelArrange()
   moveOwner = owner
   for (var i = 0; i < widgets.length; i++) register(widgets[i])
+  var root = hostBar()
+  if (root && moveOwner && typeof moveOwner.hostBarOffered === "function") moveOwner.hostBarOffered(root)
 }
 
 function unregisterOwner(owner) {
@@ -82,6 +99,7 @@ function continueArrange(owner) {
   var chosen = null
   for (var i = 0; i < widgets.length; i++) {
     var widget = widgets[i]
+    if (route.after !== undefined && serials[i] <= route.after) continue
     if (widget && String(widget.screenName || "") === route.screen) {
       chosen = widget
       break
@@ -102,6 +120,21 @@ function continueArrange(owner) {
   else owner.continuationActive = false
 }
 
+// A Drawer change from the popup's Arrange board. The owner writes it at once;
+// a change to the bar layout then rebuilds every bar widget, this popup
+// included, so Arrange is reopened on the rebuilt widget for that output.
+function requestPlacement(widget, intent) {
+  if (!moveOwner || widgets.indexOf(widget) < 0 || moveOwner.busy || typeof moveOwner.place !== "function") return null
+  var screen = String(widget.screenName || "")
+  var before = serial
+  var ticket = moveOwner.place(intent)
+  if (ticket && ticket.ok && !ticket.noOp && ticket.touched && ticket.touched.indexOf("layout") >= 0) {
+    continuation = { screen: screen, generation: moveOwner.generation, attempts: 0, origin: null, after: before }
+    moveOwner.continuationActive = true
+  }
+  return ticket || null
+}
+
 // Open the popup on `screenName`, or on the first live widget when no
 // instance sits on that output (a monitor unplugged between summons). Returns
 // whether a popup was opened.
@@ -118,6 +151,22 @@ function openPopup(screenName) {
     }
   }
   if (!chosen) return false
-  chosen.open()
+  // Collapsing the expanded window lands on the manager, not the drawer.
+  if (typeof chosen.openManager === "function") chosen.openManager(false)
+  else chosen.open()
   return true
+}
+
+function offerHostBar(root) {
+  if (!root || typeof root.pluginBarApiFor !== "function") return
+  sharedHostBar = root
+  if (moveOwner && typeof moveOwner.hostBarOffered === "function") moveOwner.hostBarOffered(root)
+}
+
+function hostBar() {
+  try {
+    if (sharedHostBar && typeof sharedHostBar.pluginBarApiFor === "function") return sharedHostBar
+  } catch (error) {}
+  sharedHostBar = null
+  return null
 }
