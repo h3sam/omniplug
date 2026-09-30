@@ -148,8 +148,8 @@ test("load producer emits strict checkout HEAD provenance without coupling exact
     // This plugin's own inline entry, among other widgets, is printed ahead of the list.
     writeFileSync(join(home, ".config", "omarchy", "shell.json"), JSON.stringify({ bar: { layout: {
       left: [{ id: "omarchy.clock" }],
-      right: [{ id: "io.github.juancasanueva.plugin-manager", allowUnverifiedUpdates: true }, { id: "other" }, "bare.string"] } },
-      plugins: [{ id: "io.github.juancasanueva.plugin-manager", stale: true }] }))
+      right: [{ id: "io.github.h3sam.omniplug", allowUnverifiedUpdates: true }, { id: "other" }, "bare.string"] } },
+      plugins: [{ id: "io.github.h3sam.omniplug", stale: true }] }))
 
     executable(join(bin, "omarchy"), `#!/usr/bin/env bash
 case "$*" in
@@ -195,7 +195,7 @@ esac
     assert.equal(result.stderr, "")
     assert.ok(result.stdout.startsWith("===settings===\n"), "settings lead the stream")
     const settingsSection = result.stdout.split("===settings===\n")[1].split("===layout===\n")[0]
-    assert.deepEqual(JSON.parse(settingsSection), { id: "io.github.juancasanueva.plugin-manager", allowUnverifiedUpdates: true },
+    assert.deepEqual(JSON.parse(settingsSection), { id: "io.github.h3sam.omniplug", allowUnverifiedUpdates: true },
       "the layout entry wins over a stale plugins[] entry")
     // Every bar entry with its section, on one line, whether the entry is an
     // object or a bare id string; nothing from plugins[].
@@ -203,7 +203,7 @@ esac
     assert.equal(layoutSection.trim().split("\n").length, 1, "one line")
     assert.deepEqual(JSON.parse(layoutSection), [
       { id: "omarchy.clock", section: "left" },
-      { id: "io.github.juancasanueva.plugin-manager", section: "right" },
+      { id: "io.github.h3sam.omniplug", section: "right" },
       { id: "other", section: "right" },
       { id: "bare.string", section: "right" }
     ])
@@ -585,7 +585,7 @@ test("update producer owns cleanup before creation across signals, collisions, a
   const home = join(root, "home"), runtime = join(root, "runtime"), invalid = join(root, "invalid")
   const bin = join(root, "bin"), log = join(root, "candidates"), count = join(root, "collision")
   const modeLog = join(root, "mode"), workerMarker = join(root, "worker-ran")
-  const otherProducer = join(runtime, "omarchy-plugin-manager-updates.999999.other.0")
+  const otherProducer = join(runtime, "omniplug-updates.999999.other.0")
 
   try {
     for (const path of [join(home, ".config/omarchy/plugins"), runtime, invalid, bin, otherProducer])
@@ -614,13 +614,13 @@ exit 1
 
     let result = run("normal")
     assert.equal(result.status, 0, result.stderr)
-    assert.equal(candidates()[0].startsWith(`${runtime}/omarchy-plugin-manager-updates.`), true)
+    assert.equal(candidates()[0].startsWith(`${runtime}/omniplug-updates.`), true)
     assert.equal(readFileSync(modeLog, "utf8").trim(), "700")
     assert.equal(existsSync(candidates()[0]), false)
 
     reset(); result = run("normal", invalid)
     assert.equal(result.status, 0, result.stderr)
-    assert.equal(candidates()[0].startsWith("/tmp/omarchy-plugin-manager-updates."), true)
+    assert.equal(candidates()[0].startsWith("/tmp/omniplug-updates."), true)
     assert.equal(existsSync(candidates()[0]), false)
 
     reset(); result = run("collide")
@@ -640,7 +640,7 @@ exit 1
     assert.equal(candidates().length, 16)
     assert.equal(existsSync(workerMarker), false)
     for (const path of candidates()) assert.equal(existsSync(path), false)
-    assert.deepEqual(readdirSync(runtime), ["omarchy-plugin-manager-updates.999999.other.0"])
+    assert.deepEqual(readdirSync(runtime), ["omniplug-updates.999999.other.0"])
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

@@ -2711,8 +2711,8 @@ function validUpdateDataPaths(paths) {
   var components = home.slice(1).split("/")
   for (var i = 0; i < components.length; i++)
     if (components[i] === "" || components[i] === "." || components[i] === "..") return false
-  return paths.active === home + "/.config/omarchy/plugin-manager-updates"
-    && paths.archive === home + "/.config/omarchy/plugin-manager-updates-archive"
+  return paths.active === home + "/.config/omarchy/omniplug-updates"
+    && paths.archive === home + "/.config/omarchy/omniplug-updates-archive"
 }
 
 function parseUpdateDataStatus(raw, exitCode) {

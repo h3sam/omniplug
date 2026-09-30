@@ -38,7 +38,7 @@ Item {
   }
 
   readonly property string pluginId: manifest && manifest.id
-    ? String(manifest.id) : "io.github.juancasanueva.plugin-manager"
+    ? String(manifest.id) : "io.github.h3sam.omniplug"
 
   // Which window hosts this open: the layer-shell overlay, or a plain toplevel
   // the compositor tiles. Decided once in open() and fixed for the life of that
@@ -666,7 +666,7 @@ Item {
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.namespace: "plugin-manager"
+    WlrLayershell.namespace: "omniplug"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
@@ -687,7 +687,7 @@ Item {
   FloatingWindow {
     id: tiledWindow
     visible: root.opened && root.tiled
-    title: "Plugin Manager"
+    title: "Omniplug"
     color: Color.menu.background
     minimumSize: Qt.size(640, 480)
     implicitWidth: Style.space(1180)

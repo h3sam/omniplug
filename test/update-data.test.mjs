@@ -8,8 +8,8 @@ const read = name => readFileSync(new URL(`../${name}`, import.meta.url), "utf8"
 const Model = runInNewContext(read("Model.js") + `\n;({parseUpdateDataStatus, parseCleanupResult,
   updateDataCountLabel, cleanupOutcomeText, updateDataCommand, boundedUpdateDataChunk})`)
 const paths = { plugins: "/home/test/.config/omarchy/plugins",
-  active: "/home/test/.config/omarchy/plugin-manager-updates",
-  archive: "/home/test/.config/omarchy/plugin-manager-updates-archive" }
+  active: "/home/test/.config/omarchy/omniplug-updates",
+  archive: "/home/test/.config/omarchy/omniplug-updates-archive" }
 const status = (changes = {}) => ({ schemaVersion: 1, paths, available: true,
   activeCount: 12, lowerBound: false, limit: 32, error: "", ...changes })
 const cleanup = (changes = {}) => ({ schemaVersion: 1, status: "complete", discovered: 3,

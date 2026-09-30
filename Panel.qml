@@ -31,8 +31,8 @@ import "Model.js" as Model
 // against.
 Panel {
   id: root
-  moduleName: "io.github.juancasanueva.plugin-manager"
-  ipcTarget: "io.github.juancasanueva.plugin-manager"
+  moduleName: "io.github.h3sam.omniplug"
+  ipcTarget: "io.github.h3sam.omniplug"
   manageIpc: false
 
   property var anchorItem: null
@@ -379,7 +379,7 @@ Panel {
 
   // The id the shell knows this plugin by — the same literal the bar widget
   // answers IPC on — so the popup can ask for its own expanded window.
-  readonly property string pluginId: "io.github.juancasanueva.plugin-manager"
+  readonly property string pluginId: "io.github.h3sam.omniplug"
 
   // Hand over to the expanded window on the tab you were looking at. Close
   // first: the popup and the panel are never up together. A bar without a

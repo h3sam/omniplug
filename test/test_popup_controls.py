@@ -190,7 +190,7 @@ QtObject {
                              "\n".join(error.toString() for error in component.errors()))
             home = "/srv/accounts/" + "long-home-name" * 12
             path = home + "/.config/omarchy/plugins"
-            active = home + "/.config/omarchy/plugin-manager-updates"
+            active = home + "/.config/omarchy/omniplug-updates"
             archive = active + "-archive"
             owner = component.createWithInitialProperties({
                 "pluginsBasePath": path, "updateDataPath": active,
@@ -203,7 +203,7 @@ QtObject {
             owner.setParentItem(window.contentItem())
             window.show()
             try:
-                repository = "https://github.com/juancasanueva/omarchy-plugin-manager"
+                repository = "https://github.com/h3sam/omniplug"
                 repo_events, version_events = [], []
                 owner.repositoryNavigationRequested.connect(repo_events.append)
                 owner.githubNavigationRequested.connect(
@@ -240,7 +240,7 @@ QtObject {
                 siblings = entries[0].parentItem().childItems()
                 self.assertEqual([siblings.index(entry) for entry in entries], [0, 1, 2])
                 self.assertIsNone(owner.findChild(QQuickItem, "updateDataCounter"))
-                for raw in ("/var/lib/plugin-manager-updates", home + "-other/updates", home, home + "/nested/updates"):
+                for raw in ("/var/lib/omniplug-updates", home + "-other/updates", home, home + "/nested/updates"):
                     for prop, item in zip(properties[1:], paths[1:]):
                         owner.setProperty(prop, raw)
                         expected = "~" + raw[len(home):] if raw == home or raw.startswith(home + "/") else raw
@@ -413,8 +413,8 @@ QtObject {
 
             ready = '''({schemaVersion: 1, available: true, activeCount: 0, lowerBound: false,
                 limit: 32, error: "", paths: {plugins: "/home/test/.config/omarchy/plugins",
-                active: "/home/test/.config/omarchy/plugin-manager-updates",
-                archive: "/home/test/.config/omarchy/plugin-manager-updates-archive"}})'''
+                active: "/home/test/.config/omarchy/omniplug-updates",
+                archive: "/home/test/.config/omarchy/omniplug-updates-archive"}})'''
             try:
                 self.assertFalse(owner.property("cleanupEnabled"))
                 js("refreshUpdateData()")

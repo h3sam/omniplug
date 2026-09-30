@@ -66,8 +66,8 @@ test("SettingsInfo shares safe, content-sized Info and About cards", () => {
   assert.match(source, /enabled: root\.cleanupEnabled/)
   assert.match(source, /onClicked: root\.cleanupRequested\(\)/)
   assert.match(source, /text: root\.cleanupOutcome/)
-  assert.match(source, /text: "Plugin Manager"/)
-  assert.match(source, /text: "Juan Casanueva"/)
+  assert.match(source, /text: "Omniplug"/)
+  assert.match(source, /text: "h3sam, from Plugin Manager by Juan Casanueva"/)
   assert.doesNotMatch(source, /Process\s*\{|FileView|XMLHttpRequest|execDetached|openUrlExternally|1\.10\.0/)
 })
 

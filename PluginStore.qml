@@ -406,7 +406,7 @@ Item {
 
   // ---- Catalog ------------------------------------------------------------
 
-  // The helper owns the cache: it opens ~/.cache/omarchy-plugin-manager by
+  // The helper owns the cache: it opens ~/.cache/omniplug by
   // owner-checked no-follow descriptors, reads the projection through them
   // and publishes a fresh one with a descriptor-relative rename, so nothing
   // here names a cache path a symlink could redirect. Same scrubbed
@@ -645,9 +645,9 @@ Item {
     + "set -u -o pipefail; "
     + "summary=\"$1\"; detail=\"$2\"; shift 2; "
     + "if ! err=$(\"$@\" 2>&1 >/dev/null | tail -1); then "
-    + "  notify-send -a 'Plugin Manager' \"$summary failed\" \"$err\"; exit 1; "
+    + "  notify-send -a 'Omniplug' \"$summary failed\" \"$err\"; exit 1; "
     + "fi; "
-    + "notify-send -a 'Plugin Manager' \"$summary\" \"$detail\""
+    + "notify-send -a 'Omniplug' \"$summary\" \"$detail\""
 
   // ---- Asking -------------------------------------------------------------
   //
@@ -1351,7 +1351,7 @@ Item {
       // read, one object or nothing; the id is this plugin's fixed manifest id.
       + "printf '===settings===\\n'; "
       + "head -c 1048577 -- \"$HOME/.config/omarchy/shell.json\" 2>/dev/null "
-      + "  | jq -c --arg id io.github.juancasanueva.plugin-manager "
+      + "  | jq -c --arg id io.github.h3sam.omniplug "
       + "    '[(.bar.layout // {} | .[]? | .[]?), (.plugins // [] | .[]?)] "
       + "     | map(select(type == \"object\" and (.id | tostring) == $id)) | first // empty' 2>/dev/null; "
       // Which section every bar widget sits in, as one array on one line, so
@@ -1448,7 +1448,7 @@ Item {
     + "trap 'cleanup' EXIT; arm_signal_traps; "
     + "umask 077; owner_token=; IFS= read -r owner_token < /proc/sys/kernel/random/uuid 2>/dev/null || owner_token=; "
     + "case \"$owner_token\" in ''|*[!0-9a-f-]*) owner_token=\"${RANDOM}${RANDOM}${RANDOM}${RANDOM}\" ;; esac; "
-    + "owner_prefix=\"omarchy-plugin-manager-updates.$$.$owner_token\"; "
+    + "owner_prefix=\"omniplug-updates.$$.$owner_token\"; "
     + "make_tmpdir() { temp_root=\"$1\"; attempt=0; "
     + "  while [ \"$attempt\" -lt 8 ]; do tmpdir=\"$temp_root/$owner_prefix.$attempt\"; "
     + "    if mkdir -m 700 -- \"$tmpdir\" 2>/dev/null; then return 0; fi; "

@@ -12,7 +12,7 @@ import "PopupBridge.js" as PopupBridge
 // open/close contract the bar routes summon/hide/toggle through.
 BarWidget {
   id: root
-  moduleName: "io.github.juancasanueva.plugin-manager"
+  moduleName: "io.github.h3sam.omniplug"
 
   function injectPanel() {
     var target = panelLoader.item
@@ -115,7 +115,7 @@ BarWidget {
   }
 
   IpcHandler {
-    target: "io.github.juancasanueva.plugin-manager"
+    target: "io.github.h3sam.omniplug"
 
     function open(): void { root.open() }
     function close(): void { root.close() }

@@ -3061,7 +3061,7 @@ test("release probe start failure clears busy state and uses the active fallback
 
 test("Settings About links use the existing navigation owners and release helpers", () => {
   const info = readFileSync(new URL("../SettingsInfo.qml", import.meta.url), "utf8")
-  assert.match(info, /readonly property string repositoryUrl: "https:\/\/github\.com\/juancasanueva\/omarchy-plugin-manager"/)
+  assert.match(info, /readonly property string repositoryUrl: "https:\/\/github\.com\/h3sam\/omniplug"/)
   assert.match(info, /Model\.releaseVersionLabel\(installedVersion\)/)
   assert.match(info, /Model\.githubReleaseCandidates\(root\.repositoryUrl, root\.installedVersion\)/)
   assert.match(info, /root\.repositoryNavigationRequested\(root\.repositoryUrl\)/)
@@ -3949,12 +3949,12 @@ test("the catalog is served by the pinned helper through an owner-checked cache,
   const helper = readFileSync(new URL("../helpers/pinned_update.py", import.meta.url), "utf8")
 
   // The fetch, projection and six-hour cache moved into the helper, which
-  // opens ~/.cache/omarchy-plugin-manager by descriptor and publishes with a
+  // opens ~/.cache/omniplug by descriptor and publishes with a
   // descriptor-relative rename. No path-named mkdir/mktemp/mv remains in QML.
   assert.doesNotMatch(store, /catalogScript|\$HOME\/\.cache|mktemp|mv \\"\$tmp\\"|jq -c --argjson schema/)
   assert.doesNotMatch(store, /MARKETPLACE_STATS_URL|CATALOG_URL/)
   assert.match(helper, /MARKETPLACE_STATS_URL = "https:\/\/api\.omarchyplugins\.com\/v1\/stats"/)
-  assert.match(helper, /CACHE_DIR = \("\.cache", "omarchy-plugin-manager"\)/)
+  assert.match(helper, /CACHE_DIR = \("\.cache", "omniplug"\)/)
   assert.match(helper, /os\.rename\(name, CACHE_FILE, src_dir_fd=cache, dst_dir_fd=cache\)/)
 
   // loadCatalog runs the helper with the exact request shape it validates,
@@ -4923,7 +4923,7 @@ test("the store owns the pending confirmation flow for both windows", () => {
 
 test("the popup's expand button hands the current tab to the shell panel", () => {
   const panel = readFileSync(new URL("../Panel.qml", import.meta.url), "utf8")
-  assert.match(panel, /readonly property string pluginId: "io\.github\.juancasanueva\.plugin-manager"/)
+  assert.match(panel, /readonly property string pluginId: "io\.github\.h3sam\.omniplug"/)
   const button = panel.slice(panel.indexOf("id: expandButton"), panel.indexOf("id: refreshButton"))
   assert.match(button, /anchors\.right: refreshButton\.left/)
   assert.match(button, /anchors\.rightMargin: Style\.space\(6\)/)
@@ -5251,7 +5251,7 @@ test("the plugin's own entry is kept whole for writing and null when it could no
 })
 
 test("the expanded panel's window type is the boolean true only, read from shell.json as the loader's jq reads it", () => {
-  const id = "io.github.juancasanueva.plugin-manager"
+  const id = "io.github.h3sam.omniplug"
 
   // Same strictness as the other two settings, and no key stands in for another.
   assert.equal(Model.tiledExpandedPanel({ tiledExpandedPanel: true }), true)
@@ -5370,7 +5370,7 @@ test("the expanded window's settings face owns the one switch and reads back thr
   assert.match(store, /loadError = "Could not read the plugin list"[\s\S]{0,200}selfEntryLoaded = false/)
   assert.ok(store.indexOf("printf '===settings===") < store.indexOf("printf '===list==="), "settings lead the load stream")
   assert.ok(store.includes('head -c 1048577 -- \\"$HOME/.config/omarchy/shell.json\\" 2>/dev/null'), "bounded read of the host config")
-  assert.match(store, /jq -c --arg id io\.github\.juancasanueva\.plugin-manager/)
+  assert.match(store, /jq -c --arg id io\.github\.h3sam\.omniplug/)
   // Saving hands the host the whole entry as loaded, with the one key
   // changed: arrays, objects and long strings the strict view does not
   // carry all survive, since the host replaces the entry outright.
@@ -5517,7 +5517,7 @@ test("the expanded panel opens as a tiled window when the setting says so, and a
   const tiled = expanded.slice(expanded.indexOf("FloatingWindow {"), expanded.indexOf("BorderSurface {"))
   assert.match(tiled, /id: tiledWindow/)
   assert.match(tiled, /visible: root\.opened && root\.tiled/)
-  assert.match(tiled, /title: "Plugin Manager"/)
+  assert.match(tiled, /title: "Omniplug"/)
   assert.match(tiled, /color: Color\.menu\.background/)
   assert.match(tiled, /minimumSize: Qt\.size\(640, 480\)/)
   assert.doesNotMatch(tiled, /scrim/)
@@ -5554,7 +5554,7 @@ test("the expanded panel opens as a tiled window when the setting says so, and a
 
   const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8")
   assert.match(readme, /\*\*Open expanded panel as a tiled window\*\*/)
-  assert.match(readme, /windowrule = float, title:\^\(Plugin Manager\)\$/)
+  assert.match(readme, /windowrule = float, title:\^\(Omniplug\)\$/)
 })
 
 // ---- Moving a bar widget between sections ---------------------------------
