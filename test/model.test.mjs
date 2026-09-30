@@ -3692,7 +3692,7 @@ test("Panel delegates data, processes and actions to PluginStore", () => {
   const panel = readFileSync(new URL("../Panel.qml", import.meta.url), "utf8")
   const store = readFileSync(new URL("../PluginStore.qml", import.meta.url), "utf8")
 
-  assert.match(panel, /PluginStore \{\s*id: store\s*externalBusy: !!root\.popupMoveOwner && root\.popupMoveOwner\.busy\s*selfId: root\.moduleName(?:\s*\/\/[^\n]*)*\s*shell: root\.bar \? root\.bar\.shell : null\s*\}/)
+  assert.match(panel, /PluginStore \{\s*id: store\s*placement: root\.placementOwner\s*externalBusy: !!root\.popupMoveOwner && root\.popupMoveOwner\.busy\s*selfId: root\.moduleName(?:\s*\/\/[^\n]*)*\s*shell: root\.bar \? root\.bar\.shell : null\s*\}/)
   // Every process and script lives in the store; the panel keeps only the
   // release probe, which is about navigation rather than data.
   for (const id of ["loadProc", "updateProc", "catalogProc", "actionProc"]) {
@@ -3713,10 +3713,12 @@ test("Panel delegates data, processes and actions to PluginStore", () => {
   // State the surface binds to is aliased, so existing bindings read the
   // store without naming it.
   for (const name of [
-    "rows", "loading", "loadError", "checkingUpdates", "catalog", "catalogLoading",
+    "loading", "loadError", "checkingUpdates", "catalog", "catalogLoading",
     "catalogLoaded", "catalogError", "previewsSupported", "busyKind", "busyRowId",
     "busyId", "status", "statusIsError"
   ]) assert.match(panel, new RegExp(`property alias ${name}: store\\.${name}\\b`), name)
+  // Rows are the store's, with stowed widgets shown on (or off) in the drawer.
+  assert.match(panel, /readonly property var rows: Model\.withStowed\(store\.rows, placementOwner \? placementOwner\.board : null\)/)
   for (const name of ["busy", "verifiedIds", "behindCount", "installedTotal", "updateActionsEnabled"])
     assert.match(panel, new RegExp(`readonly property (alias|\\w+) ${name}: store\\.${name}\\b`), name)
   // Thin wrappers keep the keyboard handler and buttons untouched, and keep
@@ -4887,7 +4889,7 @@ test("the store owns the pending confirmation flow for both windows", () => {
     assert.equal(Model[fn]("add", "x"), Model[fn]("nonsense", "x"), fn + " keeps no dead add branch")
   assert.match(store, /readonly property bool confirming: pendingKind !== "" && pendingKind !== "place"/)
   assert.match(store, /readonly property bool placing: pendingKind === "place"/)
-  assert.match(store, /readonly property var placementChoices: pendingKind === "move"\s*\? Model\.moveOptions\(pendingSection\) : Model\.placementOptions\(\)/)
+  assert.match(store, /readonly property var placementChoices: pendingKind === "move"\s*\? Model\.moveOptions\(pendingSection\) : Model\.placementOptions\(canStowInDrawer && !pendingPlacementNeeded\)/)
   assert.match(store, /readonly property string placementMessage:/)
   assert.match(store, /readonly property string confirmMessage: \{/)
   for (const fn of [
@@ -4906,7 +4908,7 @@ test("the store owns the pending confirmation flow for both windows", () => {
   assert.match(store, /runAction\("remove", pendingLabel, \["omarchy", "plugin", "remove", pendingId, "--yes"\]\)/)
 
   // The popup keeps its bindings through aliases and thin wrappers.
-  assert.match(panel, /PluginStore \{\s*id: store\s*externalBusy: !!root\.popupMoveOwner && root\.popupMoveOwner\.busy\s*selfId: root\.moduleName(?:\s*\/\/[^\n]*)*\s*shell: root\.bar \? root\.bar\.shell : null\s*\}/)
+  assert.match(panel, /PluginStore \{\s*id: store\s*placement: root\.placementOwner\s*externalBusy: !!root\.popupMoveOwner && root\.popupMoveOwner\.busy\s*selfId: root\.moduleName(?:\s*\/\/[^\n]*)*\s*shell: root\.bar \? root\.bar\.shell : null\s*\}/)
   for (const name of ["pendingKind", "pendingId", "pendingLabel", "pendingUrl", "pendingVerifiedCommit", "pendingPlacementNeeded", "pendingPlacement"])
     assert.match(panel, new RegExp(`property alias ${name}: store\\.${name}\\b`), name)
   for (const name of ["confirming", "placing", "placementChoices", "placementMessage", "confirmMessage"])
@@ -4948,7 +4950,7 @@ test("the expanded window is a layer-shell overlay that the shell summons and hi
   assert.match(expanded, /property var shell: null/)
   assert.match(expanded, /property var manifest: null/)
   assert.match(expanded, /property bool opened: false/)
-  assert.match(expanded, /PluginStore \{\s*id: store\s*watchConfig: root\.opened\s*selfId: root\.pluginId\s*(\/\/[^\n]*\n\s*)*shell: root\.shell\s*\}/)
+  assert.match(expanded, /PluginStore \{\s*id: store\s*watchConfig: root\.opened\s*selfId: root\.pluginId\s*(\/\/[^\n]*\n\s*)*shell: root\.shell\s*placement: placementOwner\s*\}/)
 
   const window = expanded.slice(expanded.indexOf("PanelWindow {"), expanded.indexOf("PanelWindow {") + 700)
   assert.match(window, /visible: root\.opened/)
@@ -5666,7 +5668,7 @@ test("the store moves a widget through the placement question or straight from a
   assert.match(store, /readonly property bool confirming: pendingKind !== "" && pendingKind !== "place" && pendingKind !== "move"/)
   assert.match(store, /readonly property bool placing: pendingKind === "place" \|\| pendingKind === "move"/)
   assert.match(store, /property string pendingSection: ""/)
-  assert.match(store, /readonly property var placementChoices: pendingKind === "move"\s*\? Model\.moveOptions\(pendingSection\) : Model\.placementOptions\(\)/)
+  assert.match(store, /readonly property var placementChoices: pendingKind === "move"\s*\? Model\.moveOptions\(pendingSection\) : Model\.placementOptions\(canStowInDrawer && !pendingPlacementNeeded\)/)
   assert.match(store, /"Move " \+ pendingLabel \+ " to which section of the bar\?"/)
   assert.match(store, /function askMove\(row\) \{\s*if \(!Model\.canMove\(row\) \|\| busy\) return false[\s\S]*?pendingSection = String\(row\.barSection \|\| ""\)\s*pendingKind = "move"\s*return true/)
   // Detached like enable: the layout rewrite tears the popup down.
@@ -5750,4 +5752,26 @@ test("the popup row hides its update button unless an update is installable or r
   const details = readFileSync(new URL("../InstalledDetails.qml", import.meta.url), "utf8")
   const detailsButton = details.slice(details.indexOf("id: updateButton"), details.indexOf("id: updateButton") + 400)
   assert.match(detailsButton, /visible: root\.row \? root\.row\.updatable === true : false/)
+})
+
+test("stowed rows read as on (unless switched off) and live in the drawer", () => {
+  const M = Function(source + "; return { withStowed, placementOptions, canEnable, canDisable, canMove }")()
+  const rows = [
+    { id: "acme.vpn", enabled: false, barSection: "", canDisable: false, kinds: ["bar-widget"] },
+    { id: "acme.off", enabled: false, barSection: "", canDisable: false, kinds: ["bar-widget"] },
+    { id: "omarchy.clock", enabled: true, barSection: "center", canDisable: true, kinds: ["bar-widget"] }
+  ]
+  const board = { zones: { drawer: [{ id: "acme.vpn", state: "live" }, { id: "acme.off", state: "off" }] } }
+  const shown = M.withStowed(rows, board)
+  assert.deepEqual(shown.map(r => [r.id, r.enabled, r.barSection, r.stowed === true]),
+    [["acme.vpn", true, "drawer", true], ["acme.off", false, "drawer", true], ["omarchy.clock", true, "center", false]])
+  assert.equal(shown[2], rows[2], "rows that are not stowed are the same objects")
+  assert.equal(rows[0].enabled, false, "the loaded rows are not touched")
+  assert.equal(M.canDisable(shown[0]), true)
+  assert.equal(M.canEnable(shown[1]), true)
+  assert.equal(M.canMove(shown[0]), false, "the section mover does not apply to the drawer")
+  assert.equal(M.withStowed(rows, null), rows)
+  assert.equal(M.withStowed(rows, { zones: { drawer: [] } }), rows)
+  assert.deepEqual(M.placementOptions().map(o => o.value), ["left", "center", "right"])
+  assert.deepEqual(M.placementOptions(true).map(o => o.value), ["left", "center", "right", "drawer"])
 })

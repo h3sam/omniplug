@@ -65,6 +65,7 @@ Panel {
 
   PluginStore {
     id: store
+    placement: root.placementOwner
     externalBusy: !!root.popupMoveOwner && root.popupMoveOwner.busy
     selfId: root.moduleName
     // The sanctioned way to write this plugin's shell.json entry (settings).
@@ -87,7 +88,9 @@ Panel {
     }
   }
 
-  property alias rows: store.rows
+  // What the rows show: the loaded list with stowed widgets marked on (or
+  // off) in the drawer, which the plugin list alone would call off.
+  readonly property var rows: Model.withStowed(store.rows, placementOwner ? placementOwner.board : null)
   property alias loading: store.loading
   property alias loadError: store.loadError
   property int selectedIndex: -1

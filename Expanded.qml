@@ -77,6 +77,7 @@ Item {
     selfId: root.pluginId
     // The sanctioned way to write this plugin's shell.json entry (settings).
     shell: root.shell
+    placement: placementOwner
   }
 
   Connections {
@@ -91,7 +92,7 @@ Item {
     id: placementOwner
     selfId: root.pluginId
     facadeShell: root.shell
-    facts: Placement.placementFactsFromRows(root.rows)
+    facts: Placement.placementFactsFromRows(store.rows)
   }
 
   // ---- Lifecycle (called by the shell) --------------------------------------
@@ -188,7 +189,9 @@ Item {
 
   // ---- Shared state, mirrored from the store ---------------------------------
 
-  property alias rows: store.rows
+  // What the rows show: the loaded list with stowed widgets marked on (or
+  // off) in the drawer, which the plugin list alone would call off.
+  readonly property var rows: Model.withStowed(store.rows, placementOwner.board)
   property alias loading: store.loading
   property alias loadError: store.loadError
   property alias checkingUpdates: store.checkingUpdates

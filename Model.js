@@ -825,12 +825,45 @@ function needsPlacement(row) {
   return kinds.indexOf("bar-widget") >= 0
 }
 
-function placementOptions() {
-  return [
+// withDrawer adds Omniplug's Drawer as a fourth answer, when Placement can
+// stow right now (see docs/design/m1-drawer.md).
+function placementOptions(withDrawer) {
+  var options = [
     { value: "left", label: "Left" },
     { value: "center", label: "Center" },
     { value: "right", label: "Right" }
   ]
+  if (withDrawer === true) options.push({ value: "drawer", label: "Drawer" })
+  return options
+}
+
+// The plugin list says a bar widget is enabled only while it sits in the bar,
+// so on its own it reports every stowed widget as off. Placement's board knows
+// better: a stowed row is on unless it was switched off, lives in the
+// "drawer", and can always be switched off (Omniplug remembers its spot).
+// Rows that are not stowed are returned untouched, and so is the whole list
+// when nothing is stowed.
+function withStowed(rows, board) {
+  var drawer = board && board.zones && board.zones.drawer ? board.zones.drawer : null
+  if (!rows || !drawer || drawer.length === 0) return rows
+  var stowed = {}
+  for (var i = 0; i < drawer.length; i++) if (drawer[i] && drawer[i].id) stowed[drawer[i].id] = drawer[i]
+  var changed = false
+  var out = []
+  for (var r = 0; r < rows.length; r++) {
+    var row = rows[r]
+    var slot = row ? stowed[row.id] : null
+    if (!slot) { out.push(row); continue }
+    var copy = {}
+    for (var key in row) copy[key] = row[key]
+    copy.stowed = true
+    copy.enabled = slot.state !== "off"
+    copy.barSection = "drawer"
+    copy.canDisable = true
+    out.push(copy)
+    changed = true
+  }
+  return changed ? out : rows
 }
 
 // The section reaches a CLI as an argv element. It comes from a fixed set of

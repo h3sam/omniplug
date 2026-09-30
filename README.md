@@ -7,10 +7,37 @@ popup under the bar and expands, on request, into a full-size panel with a
 details pane.
 
 Omniplug is a fork of [Plugin Manager](https://github.com/juancasanueva/omarchy-plugin-manager)
-by Juan Casanueva. It is heading towards a Drawer for the bar widgets you
-seldom use and, after that, a scrollable Dashboard; see
-[docs/design/m1-drawer.md](docs/design/m1-drawer.md). Until the Drawer lands,
-everything below describes the manager as inherited.
+by Juan Casanueva, with one addition so far: a **Drawer** for the bar widgets
+you seldom use. A scrollable Dashboard comes next. The design is in
+[docs/design/m1-drawer.md](docs/design/m1-drawer.md).
+
+## The Drawer
+
+Click the puzzle icon and the Drawer opens under it: the widgets you stowed
+off the bar, running live exactly as they did in it, in the order you
+arranged them. Click one and its own popup opens, with the Drawer still under
+it; closing the Drawer closes that popup too. **Manage** in the Drawer's
+header opens the plugin manager described below, and its back arrow returns.
+
+To stow a widget, open **Arrange** and drag it into the **Drawer** column;
+drag it back to a section to put it on the bar again. Every widget lives in
+exactly one place. In the manager, a stowed widget's switch turns it off and
+on again without losing its spot, and the "where should it go?" question
+offers the Drawer as an answer. A stowed widget that is uninstalled or fails
+to load stays as a `⚠` placeholder saying why, until you remove it with the
+`✕` in Arrange; nothing is cleaned up behind your back.
+
+How it works, briefly: Omniplug keeps the Drawer's order in its own entry in
+`~/.config/omarchy/shell.json` (`drawer: [...]`), keeps each stowed widget
+enabled with a `plugins[]` entry that also holds its settings, and marks a
+switched-off one in `disabledPlugins`, so the host's own `omarchy plugin
+enable`/`disable` agree with it. Hosting another plugin's widget relies on
+the bar's internals rather than a public API, the same way Bar Drawer and
+Groups do, so keep at least one built-in `omarchy.*` widget on the bar:
+Arrange refuses to stow the last one. Hotkeys that summon a stowed widget's
+panel are not supported yet.
+
+Everything below describes the manager itself, as inherited.
 
 ![kind: bar-widget](https://img.shields.io/badge/kind-bar--widget-informational)
 

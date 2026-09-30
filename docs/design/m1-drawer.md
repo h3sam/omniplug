@@ -248,6 +248,13 @@ The least-privileged channel that can express the plan is chosen.
    anyway, so there is no file-editing fallback. It would only add a channel
    that can race the host's own writes.
 
+In M1, Arrange sends Placement only the drops that involve the Drawer (and
+the placeholder remove control). A move between two bar sections keeps the
+store's tested `omarchy-bar move` path, whether or not the in-process writer
+is reachable; `Placement.placementIntentFor` makes that split, and
+`placementArrangeSnapshot` builds the four-column board from the bar snapshot
+Arrange already had plus Placement's drawer.
+
 ### Where it lives
 
 - **The owner is a single Placement object** in the retained, keepLoaded
@@ -413,10 +420,13 @@ feature, never the Drawer as a whole.
     status line does.
   - A placeholder tile in the Drawer column has a remove control, which sends
     `to: "remove"`.
-- **Manager rows** take on/off and zone from `placement.board.byId` for
-  widgets it knows. A stowed widget's switch sends `to: "off"`, or
+- **Manager rows** are the store's rows passed through `Model.withStowed`
+  on each surface: a stowed row reads as on unless it was switched off, and
+  sits in the `drawer`. A stowed widget's switch sends `to: "off"`, or
   `to: "drawer"` to turn it back on. Every other row keeps today's
-  enable/disable path, and the place dialog gains **Drawer** as a choice.
+  enable/disable path, and the place dialog gains **Drawer** as a choice when
+  Placement can stow. It is not offered while installing: an install lands
+  (and rebuilds the bar) before Placement could stow it.
 
 ## Tests
 
