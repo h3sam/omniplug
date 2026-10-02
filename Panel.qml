@@ -1953,6 +1953,7 @@ Panel {
 
         BarLayoutPane {
           id: barBoard
+          stackOwnerId: root.moduleName
           visible: root.arrangeOpen
           anchors.left: parent.left
           anchors.right: parent.right

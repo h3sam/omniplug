@@ -252,6 +252,17 @@ class BarLayoutUI(unittest.TestCase):
         self.assertEqual(row.opacity(), 1)
         self.assertFalse(self.item("insertion-center").isVisible())
 
+    def test_omniplug_stacks_are_named_by_number_and_nothing_else_is(self):
+        owner = "io.github.h3sam.omniplug"
+        self.root.setProperty("stackOwnerId", owner)
+        self.root.setProperty("labels", {owner: "Omniplug", "acme.list": "List"})
+        self.load({"left": [{"id": owner}, {"id": owner, "stack": "s1"}, {"id": owner, "stack": "s12"}],
+                   "center": [{"id": "acme.list", "stack": "s2"}], "right": []})
+        names = [self.item("row-left-%d" % i).property("labelText") for i in range(3)]
+        self.assertEqual(names, ["Omniplug", "Stack 1", "Stack 12"])
+        self.assertEqual(self.item("row-center-0").property("labelText"), "List",
+                         "another widget's own `stack` setting is not a stack")
+
 
 if __name__ == "__main__":
     unittest.main()

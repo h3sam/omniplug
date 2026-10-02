@@ -1803,6 +1803,7 @@ Item {
 
         BarLayoutPane {
           id: barBoard
+          stackOwnerId: root.pluginId
           visible: root.arrangeOpen
           anchors.left: parent.left
           anchors.right: parent.right

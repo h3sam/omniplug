@@ -5,6 +5,9 @@ Item {
     // Only Model.barLayoutSnapshot results belong here; never mutate them in place.
     property var snapshot: null
     property var labels: ({}) // Optional ID -> display name; instance identity stays raw.
+    // Omniplug's id: its entries that carry a `stack` are stacks, labelled
+    // "Stack N" as in the Drawer, not all "Omniplug" (docs/design/m2-stacks.md).
+    property string stackOwnerId: ""
     property bool busy: false
     property color fill: "#20212d"
     property color rowFill: "#272834"
@@ -59,6 +62,12 @@ Item {
 
     function label(entry) {
         const id = typeof entry === "string" ? entry : entry.id;
+        if (stackOwnerId !== "" && id === stackOwnerId && entry && typeof entry === "object"
+                && typeof entry.stack === "string") {
+            const number = /^s([0-9]+)$/.exec(entry.stack);
+            return ("Stack " + (number ? number[1] : entry.stack)).slice(0, 120)
+                .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, "");
+        }
         const value = labels && Object.prototype.hasOwnProperty.call(labels, id) ? labels[id] : id;
         return (typeof value === "string" ? value : id).slice(0, 120)
             .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, "");
