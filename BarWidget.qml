@@ -24,7 +24,6 @@ BarWidget {
   readonly property bool isStack: root.stackId !== ""
   property bool modeKnown: false
   readonly property bool isIcon: root.modeKnown && !root.isStack
-  onSettingsChanged: root.modeKnown = true
   Timer {
     interval: 250
     running: !root.modeKnown
@@ -266,7 +265,10 @@ BarWidget {
   }
 
   onBarChanged: injectPanel()
-  onSettingsChanged: injectPanel()
+  onSettingsChanged: {
+    root.modeKnown = true
+    injectPanel()
+  }
 
   Loader {
     id: panelLoader
