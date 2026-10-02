@@ -15,7 +15,7 @@ function call(source, name, state, ...args) {
 }
 
 // A BarWidget whose functions call each other through the shipped bodies.
-function widgetState({ deferred = false } = {}) {
+function widgetState() {
   const log = []
   const panel = {
     opened: false, fromDrawer: false,
@@ -30,7 +30,7 @@ function widgetState({ deferred = false } = {}) {
       requestPopout(owner) { log.push("request:" + (owner === state ? "widget" : "other")) },
       releasePopout(owner) { log.push("release:" + (owner === state ? "widget" : "other")) }
     },
-    stage: { deferPopoutSwitch() { log.push("defer?"); return deferred } },
+    drawerTicket: null, isIcon: true, noteAfter: -1, placementOwner: null,
     cancelPopupArrange() { log.push("cancel") }
   }
   state.root = state
@@ -74,22 +74,15 @@ test("Manage swaps the drawer for the manager, marked as coming from the drawer;
   assert.match(panelSource, /onClicked: if \(root\.hostWidget && typeof root\.hostWidget\.openDrawer === "function"\) root\.hostWidget\.openDrawer\(\)/)
 })
 
-test("a popout switch is deferred to the stage while the drawer shows, and closes everything otherwise", () => {
-  const deferred = widgetState({ deferred: true })
-  deferred.state.openDrawer()
-  deferred.log.length = 0
-  deferred.state.closeForPopoutSwitch()
-  assert.equal(deferred.state.drawerOpen, true, "a stowed widget's panel may be the new popout")
-  assert.deepEqual(deferred.log, ["defer?"])
-
-  const plain = widgetState({ deferred: false })
+test("a popout switch closes the drawer and the manager: the drawer hosts no widgets any more", () => {
+  const plain = widgetState()
   plain.state.openDrawer()
   plain.panel.opened = true
   plain.log.length = 0
   plain.state.closeForPopoutSwitch()
   assert.equal(plain.state.drawerOpen, false)
   assert.equal(plain.panel.opened, false)
-  assert.deepEqual(plain.log, ["defer?", "cancel", "release:widget", "panel.switchClose"])
+  assert.deepEqual(plain.log, ["cancel", "release:widget", "panel.switchClose"])
 })
 
 test("summon opens the drawer; close closes whichever is open", () => {
@@ -124,45 +117,63 @@ function storeState(requests, ok = true) {
     startDisable(row) { state.started.push([row.id, "disable"]) },
     cancelPending() { state.pendingKind = ""; state.pendingId = ""; state.pendingLabel = "" }
   }
-  for (const name of ["placeStowed", "askEnable", "askDisable", "confirmPlacement"])
+  for (const name of ["placeStowed", "askEnable", "askDisable", "confirmPlacement", "strandedOffBar"])
     state[name] = (...args) => call(storeSource, name, state, ...args)
   return state
 }
 
-test("the manager's switch turns a stowed widget off and back on in its drawer spot", () => {
+const stackBoard = state => ({ stacks: [{ sid: "s1", cards: [[{ id: "acme.vpn", state }]] }], orphans: [] })
+
+test("the manager's switch turns a stacked widget off and back on in its card", () => {
   const requests = []
   const s = storeState(requests)
   const rows = Model.withStowed([{ id: "acme.vpn", enabled: false, canDisable: false, kinds: ["bar-widget"] }],
-    { zones: { drawer: [{ id: "acme.vpn", state: "live" }] } })
+    stackBoard("live"))
+  assert.equal(rows[0].barSection, "stack")
   assert.equal(s.askDisable(rows[0]), true)
   assert.deepEqual(requests, [{ id: "acme.vpn", to: "off" }])
-  const off = Model.withStowed([{ id: "acme.vpn", enabled: false, kinds: ["bar-widget"] }],
-    { zones: { drawer: [{ id: "acme.vpn", state: "off" }] } })
+  const off = Model.withStowed([{ id: "acme.vpn", enabled: false, kinds: ["bar-widget"] }], stackBoard("off"))
   assert.equal(s.askEnable(off[0]), true)
-  assert.deepEqual(requests[1], { id: "acme.vpn", to: "drawer" }, "no placement question: it has a spot")
+  assert.deepEqual(requests[1], { id: "acme.vpn", to: "on" }, "no placement question: it has a spot")
   assert.deepEqual(s.started, [], "the host's enable, which would put it in the bar, is never used")
   assert.equal(s.statusText, "done")
 })
 
-test("the placement question's Drawer answer goes to Placement; a section keeps the host's enable", () => {
+test("the placement question offers bar sections only, through the host's enable", () => {
   const requests = []
   const s = storeState(requests)
   s.rows = [{ id: "acme.vpn", name: "VPN", enabled: false, kinds: ["bar-widget"] }]
   s.pendingKind = "place"; s.pendingId = "acme.vpn"; s.pendingLabel = "VPN"
-  s.confirmPlacement("drawer")
-  assert.deepEqual(requests, [{ id: "acme.vpn", to: "drawer" }])
-  assert.deepEqual(s.started, [])
-  s.pendingKind = "place"; s.pendingId = "acme.vpn"; s.pendingLabel = "VPN"
   s.confirmPlacement("left")
   assert.deepEqual(s.started, [["acme.vpn", "left"]])
-  assert.match(storeSource, /Model\.placementOptions\(canStowInDrawer && !pendingPlacementNeeded\)/,
-    "installs never offer the Drawer: the install lands before Placement could stow it")
+  assert.deepEqual(requests, [])
+  assert.match(storeSource, /Model\.placementOptions\(\)/)
+})
+
+test("a stranded widget's placement answer goes to Placement: the host's enable would find its entry and stop", () => {
+  const requests = []
+  const s = storeState(requests)
+  s.rows = [{ id: "acme.vpn", name: "VPN", enabled: false, kinds: ["bar-widget"] }]
+  s.placement.board = { canStow: true, unplaced: [{ id: "acme.vpn", carried: true }, { id: "acme.free", carried: false }] }
+  s.pendingKind = "place"; s.pendingId = "acme.vpn"; s.pendingLabel = "VPN"
+  s.confirmPlacement("left")
+  assert.deepEqual(requests, [{ id: "acme.vpn", to: "left" }])
+  assert.deepEqual(s.started, [])
+  s.rows.push({ id: "acme.free", name: "Free", enabled: false, kinds: ["bar-widget"] })
+  s.pendingKind = "place"; s.pendingId = "acme.free"; s.pendingLabel = "Free"
+  s.confirmPlacement("right")
+  assert.deepEqual(s.started, [["acme.free", "right"]], "with no entry in the way, the host's enable places it")
 })
 
 test("a refused Placement request is reported as an error", () => {
   const s = storeState([], false)
-  const rows = Model.withStowed([{ id: "acme.vpn", enabled: false, kinds: ["bar-widget"] }],
-    { zones: { drawer: [{ id: "acme.vpn", state: "live" }] } })
+  const rows = Model.withStowed([{ id: "acme.vpn", enabled: false, kinds: ["bar-widget"] }], stackBoard("live"))
   assert.equal(s.askDisable(rows[0]), false)
   assert.equal(s.statusError, true)
+})
+
+test("rows are untouched when nothing is stacked", () => {
+  const rows = [{ id: "acme.vpn", enabled: true }]
+  assert.equal(Model.withStowed(rows, { stacks: [], orphans: [] }), rows)
+  assert.equal(Model.withStowed(rows, null), rows)
 })

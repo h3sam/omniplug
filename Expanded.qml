@@ -561,28 +561,9 @@ Item {
     return store.startBarMove(snapshot, fromSection, fromIndex, section, gap)
   }
 
-  // Arrange's board: the bar plus the Drawer column when Placement has a board.
-  readonly property var arrangeSnapshot: Placement.placementArrangeSnapshot(root.barSnapshot, placementOwner.board)
-
-  // A drop that involves the Drawer goes to Placement; a move between bar
-  // sections keeps the omarchy-bar path above.
-  function requestArrangeMove(snapshot, fromSection, fromIndex, section, gap) {
-    var intent = Placement.placementIntentFor(snapshot, fromSection, fromIndex, section, gap)
-    if (!intent) return requestBarMove(snapshot && snapshot.bar ? snapshot.bar : snapshot, fromSection, fromIndex, section, gap)
-    if (!opened || !arrangeOpen || contentFlipping || busy) return false
-    var ticket = placeFromArrange(intent)
-    return !!ticket && ticket.ok
-  }
-
-  function requestArrangeRemove(snapshot, section, index) {
-    var intent = Placement.placementRemovalFor(snapshot, section, index)
-    if (!intent || !opened || !arrangeOpen || contentFlipping || busy) return false
-    var ticket = placeFromArrange(intent)
-    return !!ticket && ticket.ok
-  }
-
-  // Both surfaces' Drawer changes land here, so the status line they share
-  // (store.status, also the popup's popupMoveOwner.status) says what happened.
+  // Every stack change (from the Drawer, through PopupBridge) lands here, so
+  // the status line the surfaces share (store.status, also the popup's
+  // popupMoveOwner.status) says what happened.
   function placeFromArrange(intent) {
     if (store.busy || barMovePending) return null
     var ticket = placementOwner.request(intent)
@@ -1822,15 +1803,14 @@ Item {
 
         BarLayoutPane {
           id: barBoard
+          stackOwnerId: root.pluginId
           visible: root.arrangeOpen
           anchors.left: parent.left
           anchors.right: parent.right
           anchors.top: arrangeRecovery.bottom
           anchors.topMargin: Style.space(16)
           anchors.bottom: parent.bottom
-          snapshot: root.arrangeSnapshot
-          sections: root.arrangeSnapshot && root.arrangeSnapshot.placementKey
-            ? ["left", "center", "right", "drawer"] : ["left", "center", "right"]
+          snapshot: root.barSnapshot
           labels: {
             var labels = Object.create(null)
             for (var row of root.rows) labels[row.id] = row.name
@@ -1838,10 +1818,7 @@ Item {
           }
           busy: root.busy || root.contentFlipping || !root.opened || placementOwner.busy
           onMoveRequested: function(snapshot, fromSection, fromIndex, section, gap) {
-            root.requestArrangeMove(snapshot, fromSection, fromIndex, section, gap)
-          }
-          onRemoveRequested: function(snapshot, section, index) {
-            root.requestArrangeRemove(snapshot, section, index)
+            root.requestBarMove(snapshot, fromSection, fromIndex, section, gap)
           }
           fill: Color.menu.background
           rowFill: Style.normalFill

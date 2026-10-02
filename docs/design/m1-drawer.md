@@ -1,7 +1,8 @@
 # M1: the Drawer
 
-Status: agreed design, being implemented. M2 (the Dashboard) is outlined only
-where M1 must leave room for it.
+Status: implemented. M2 replaced the Dashboard outlined at the end with
+stacks; see [m2-stacks.md](m2-stacks.md). The Drawer described here is now
+where stacks are configured, and stowing is gone.
 
 Omniplug is a fork of Juan Casanueva's Plugin Manager for the Omarchy 4.x
 shell. M1 does two things: it gives the project its own identity, and it lets

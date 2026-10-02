@@ -149,3 +149,86 @@ function hostingPopoutVerdict(facts) {
   if (f.active === f.owner || f.ownsActive) return "keep"
   return "dismiss"
 }
+
+// ---- Stacks (docs/design/m2-stacks.md) ----------------------------------
+
+// What a stack shows on the bar: its cards with switched-off widgets left
+// out, and cards that end up empty dropped. Missing widgets stay, so their
+// placeholder says what is wrong. Slots come from Placement's board.
+function hostingStackCards(stack) {
+  var cards = stack && Array.isArray(stack.cards) ? stack.cards : []
+  var out = []
+  for (var c = 0; c < cards.length; c++) {
+    var shown = (cards[c] || []).filter(function(slot) { return !!slot && slot.state !== "off" })
+    if (shown.length > 0) out.push(shown)
+  }
+  return out
+}
+
+// Every slot in every card, in order: what the stack's HostStage hosts.
+// Off widgets are passed too; the stage keeps them as unloaded placeholders.
+function hostingStackEntries(stack) {
+  var cards = stack && Array.isArray(stack.cards) ? stack.cards : []
+  var out = []
+  for (var c = 0; c < cards.length; c++) for (var i = 0; i < (cards[c] || []).length; i++) out.push(cards[c][i])
+  return out
+}
+
+// The card index after flipping `step` cards from `index`, wrapping around.
+function hostingWrap(index, step, count) {
+  if (!(count > 0)) return 0
+  var value = (Math.floor(index) || 0) + (Math.floor(step) || 0)
+  return ((value % count) + count) % count
+}
+
+// Wheel deltas, accumulated until a whole notch: one card per notch, or per
+// 120 units of pixel delta on a touchpad. Returns { step, rest }.
+function hostingWheelStep(accumulated, delta) {
+  var total = (accumulated || 0) + (delta || 0)
+  var notches = total > 0 ? Math.floor(total / 120) : Math.ceil(total / 120)
+  // Wheel up (positive) goes back a card, down goes forward, like a list.
+  return { step: -notches, rest: total - notches * 120 }
+}
+
+// The stack's extent along the bar: its fixed width at rest, the showing
+// card's natural width plus the flip strip while it fans out (only ever
+// wider), and a small marker when there is nothing to show. The fixed width
+// includes the strip, so the strip is never given up to a widget.
+function hostingStackExtent(facts) {
+  var f = facts || {}
+  if (!f.hasCards) return Math.max(0, f.emptyExtent || 0)
+  var fixed = Math.max(0, f.fixed || 0)
+  var full = Math.max(0, f.natural || 0) + Math.max(0, f.handle || 0)
+  return f.fanned && full > fixed ? full : fixed
+}
+
+// How the flip strip draws `count` cards in `room` pixels across the bar:
+//   { mode: "dots", size, spacing }  one circle per card, the showing card's a
+//                                    pill two circles long, all inside room
+//   { mode: "track", thumb }         too many to draw: a line the length of
+//                                    room, with a pill `thumb` long that slides
+//                                    to the showing card's share of it
+// Circles shrink to fit but never below 3 px; past that it is a track.
+// Unknown room (0) keeps the preferred circles.
+function hostingStripLayout(count, room, preferredSize, preferredSpacing) {
+  var n = Math.max(1, Math.floor(count) || 1) + 1
+  var size = preferredSize || 4
+  var spacing = preferredSpacing || 3
+  function length(s, sp) { return n * s + (n - 1) * sp }
+  if (!(room > 0) || length(size, spacing) <= room) return { mode: "dots", size: size, spacing: spacing }
+  for (var s = size; s >= 3; s--) {
+    for (var sp = Math.min(spacing, s); sp >= 1; sp--) {
+      if (length(s, sp) <= room) return { mode: "dots", size: s, spacing: sp }
+    }
+  }
+  var cards = n - 1
+  return { mode: "track", thumb: Math.max(4, Math.min(room, Math.round(room / cards))) }
+}
+
+// Where the track's pill starts for the showing card: evenly from the first
+// card at 0 to the last at room - thumb.
+function hostingThumbOffset(current, count, room, thumb) {
+  if (!(count > 1)) return 0
+  var free = Math.max(0, room - thumb)
+  return Math.round(free * Math.max(0, Math.min(count - 1, current)) / (count - 1))
+}

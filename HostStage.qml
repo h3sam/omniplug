@@ -2,8 +2,9 @@ import QtQuick
 import QtQml
 import "HostingModel.js" as HostingModel
 
-// Owns every stowed widget instance for one Omniplug bar widget (so one per
-// monitor, like the bar's own slots). See docs/design/m1-drawer.md, Hosting.
+// Owns every hosted widget instance for one Omniplug bar entry (so one per
+// monitor, like the bar's own slots): today, each stack's widgets. See
+// docs/design/m1-drawer.md, Hosting, and docs/design/m2-stacks.md.
 //
 // Instances live here, parked and invisible, for as long as their entry is in
 // `entries`; a HostMount in a view borrows one by re-parenting it, so opening
@@ -15,12 +16,15 @@ import "HostingModel.js" as HostingModel
 // (plugins/bar/Bar.qml), and the proxy slot and card repaint follow Groups
 // (kristofferR/omarchy-groups, MIT) and Bar Drawer (SykesTheLord, MIT).
 //
-// Caller obligations:
+// Caller obligations, when the stage's owner holds the bar's popout (the M1
+// Drawer did; holdsPopout: true):
 //   O1  create the stage in BarWidget.qml, not inside a view
 //   O2  BarWidget.closeForPopoutSwitch() calls deferPopoutSwitch() first and
 //       returns if it answers true
 //   O3  `shown` goes false no later than the moment the drawer starts hiding
 //   O4  mounts live in the drawer window (edge-spanning, masked to its card)
+// A stack sits in the bar itself and is never a popout owner, so it runs with
+// holdsPopout: false and the stage leaves the bar's popout alone.
 Item {
   id: stage
   visible: false
@@ -36,6 +40,10 @@ Item {
   property var entries: []
   // Hosted content is on screen and may take input.
   property bool shown: false
+  // The owner holds the bar's popout while shown, so the stage reclaims it
+  // when a hosted child closes and dismisses the owner when anything else
+  // takes it. False for a stack: the bar's popout is none of its business.
+  property bool holdsPopout: true
   // The colour hosted widgets should draw with on the drawer card; widgets
   // still using the bar's (for a transparent bar) are rebound to it.
   property color cardForeground: "transparent"
@@ -67,7 +75,7 @@ Item {
   // handing the popout over, and the new owner may be one of our own
   // widgets. Answer "don't close yet" and decide once the popout settles.
   function deferPopoutSwitch() {
-    if (!stage.shown) return false
+    if (!stage.shown || !stage.holdsPopout) return false
     Qt.callLater(stage.reconcilePopout)
     return true
   }
@@ -113,7 +121,7 @@ Item {
   }
 
   function reconcilePopout() {
-    if (!stage.port) return
+    if (!stage.port || !stage.holdsPopout) return
     var active = stage.port.activePopout
     var verdict = HostingModel.hostingPopoutVerdict({
       shown: stage.shown, active: active, owner: stage.owner, ownsActive: stage.ownsPopout(active)
@@ -142,7 +150,7 @@ Item {
   Connections {
     target: stage.port
     ignoreUnknownSignals: true
-    function onActivePopoutChanged() { if (stage.shown) Qt.callLater(stage.reconcilePopout) }
+    function onActivePopoutChanged() { if (stage.shown && stage.holdsPopout) Qt.callLater(stage.reconcilePopout) }
   }
 
   // ---- Instances ---------------------------------------------------------
@@ -346,9 +354,9 @@ Item {
         readonly property bool commandCustom: false
         readonly property bool registered: true
         readonly property var registryComponent: instance.component
-        // Only while the drawer is shown, so summon routing never opens a
-        // widget nobody can see.
-        readonly property var activeItem: stage.shown ? loader.item : null
+        // Only while shown and mounted, so summon routing never opens a
+        // widget nobody can see (a parked one, or one on a card not showing).
+        readonly property var activeItem: stage.shown && instance.mountPoint !== null ? loader.item : null
         readonly property bool hovered: false
         readonly property bool dragSource: false
         readonly property bool panelOpen: !!stage.port && !!loader.item && stage.port.activePopout === loader.item

@@ -1,0 +1,6 @@
+module Quickshell
+PanelWindow 1.0 PanelWindow.qml
+PopupWindow 1.0 PopupWindow.qml
+LazyLoader 1.0 LazyLoader.qml
+Region 1.0 Region.qml
+TransformWatcher 1.0 TransformWatcher.qml

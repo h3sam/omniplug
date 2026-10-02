@@ -164,7 +164,17 @@ Item {
       return false
     }
     var next = Model.withSelfSetting(selfEntry, key, want)
-    if (shell.updateEntryInline(selfId, next) !== true) {
+    // updateEntryInline rewrites every entry with our id, and a stack is one
+    // of those: once there are stacks, only the in-process writer can change
+    // the icon's settings alone (docs/design/m2-stacks.md).
+    var stacked = !!placement && !!placement.board && placement.board.stacks.length > 0
+    if (stacked) {
+      var ticket = placement.request({ op: "selfSetting", name: key, value: want })
+      if (!ticket.ok) {
+        setStatus(ticket.note || "Could not save the setting", true)
+        return false
+      }
+    } else if (shell.updateEntryInline(selfId, next) !== true) {
       setStatus("Could not save the setting", true)
       return false
     }
@@ -217,12 +227,11 @@ Item {
   property string pendingPlacement: ""
 
   // Omniplug's Placement owner (PlacementOwner.qml), which writes every
-  // Drawer change; null until the surface has one. See docs/design/m1-drawer.md.
+  // stack change; null until the surface has one. See docs/design/m2-stacks.md.
   property var placement: null
-  readonly property bool canStowInDrawer: !!placement && !!placement.board && placement.board.canStow === true
 
   readonly property var placementChoices: pendingKind === "move"
-    ? Model.moveOptions(pendingSection) : Model.placementOptions(canStowInDrawer && !pendingPlacementNeeded)
+    ? Model.moveOptions(pendingSection) : Model.placementOptions()
   readonly property string placementMessage: pendingKind === "move"
     ? "Move " + pendingLabel + " to which section of the bar?"
     : "Where in the bar should " + pendingLabel + " go?"
@@ -700,7 +709,7 @@ Item {
 
   // Enabling is not destructive and needs no "are you sure" — but a bar widget
   // has to be told where it goes, and only the user knows that.
-  // A stowed widget turns back on where it was, through Placement.
+  // A stacked widget turns off and back on in its card, through Placement.
   function placeStowed(row, to) {
     if (!placement || busy) return false
     var ticket = placement.request({ id: String(row.id), to: to })
@@ -710,7 +719,7 @@ Item {
 
   function askEnable(row) {
     if (!Model.canEnable(row) || busy) return false
-    if (row.stowed === true) return placeStowed(row, "drawer")
+    if (row.stowed === true) return placeStowed(row, "on")
 
     if (!Model.needsPlacement(row)) {
       // A service, an overlay, or a whole-bar plugin: nothing to place, so the
@@ -731,7 +740,7 @@ Item {
   // one exception: the surface's own row, whose Enable button leaves with it.
   function askDisable(row) {
     if (!Model.canDisable(row) || busy) return false
-    // Off, but Omniplug remembers its drawer spot for when it comes back on.
+    // Off, but Omniplug remembers its card spot for when it comes back on.
     if (row.stowed === true) return placeStowed(row, "off")
 
     if (row.id === selfId) {
@@ -802,11 +811,22 @@ Item {
       setStatus("Could not enable " + label + ": it is no longer in the list", true)
       return
     }
-    if (section === "drawer") {
-      placeStowed(row, "drawer")
+    if (strandedOffBar(row)) {
+      placeStowed(row, section)
       return
     }
     startEnable(row, section)
+  }
+
+  // A bar widget placed nowhere that still has a plugins[] entry: `omarchy
+  // plugin enable` finds that entry, takes the widget for placed, and changes
+  // nothing. Placement can put it on the bar (docs/design/m2-stacks.md).
+  function strandedOffBar(row) {
+    var board = placement ? placement.board : null
+    if (!row || !board || board.canStow !== true || !board.unplaced) return false
+    for (var i = 0; i < board.unplaced.length; i++)
+      if (board.unplaced[i].id === row.id) return board.unplaced[i].carried === true
+    return false
   }
 
   function cancelPending() {

@@ -20,7 +20,7 @@ function actionStore(owner = null) {
   const effects = []
   const state = { popupMoveOwner: owner, busyKind: "", barMovePending: null, cleanupProcess: null,
     actionProc: { running: false }, pinnedProc: { running: false }, barMoveProc: { running: false },
-    selfId: "manager", selfEntry: {}, selfEntryLoaded: true, selfSettings: {},
+    selfId: "manager", placement: null, selfEntry: {}, selfEntryLoaded: true, selfSettings: {},
     allowUnverifiedUpdates: false, allowUnverifiedInstalls: false, tiledExpandedPanel: false,
     pendingKind: "", pendingId: "", pendingLabel: "", pendingPlacementNeeded: false,
     rows: [], catalog: [], catalogLoaded: true, pinnedHelperPath: "/fake/helper", noticeScript: "fake",
@@ -541,7 +541,8 @@ test("Installed return uses live panel readiness and user navigation cancels inv
   for (const action of ["close", "togglePanel", "closeForPopoutSwitch"]) {
     let cancelled = 0
     const state = { cancelPopupArrange() { cancelled++ }, panelLoader: { item: null },
-      drawerOpen: false, openDrawer() {}, closeDrawer() {}, stage: { deferPopoutSwitch() { return false } } }
+      drawerOpen: false, openDrawer() {}, closeDrawer() {}, isIcon: true }
+    state.root = state
     call(widgetSource, action, state)
     assert.equal(cancelled, 1)
   }

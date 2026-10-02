@@ -7,35 +7,61 @@ popup under the bar and expands, on request, into a full-size panel with a
 details pane.
 
 Omniplug is a fork of [Plugin Manager](https://github.com/juancasanueva/omarchy-plugin-manager)
-by Juan Casanueva, with one addition so far: a **Drawer** for the bar widgets
-you seldom use. A scrollable Dashboard comes next. The design is in
-[docs/design/m1-drawer.md](docs/design/m1-drawer.md).
+by Juan Casanueva. It adds **stacks**: bar slots that hold several widgets as
+cards, built in Omniplug's **Drawer**. The designs are in
+[docs/design/m1-drawer.md](docs/design/m1-drawer.md) and
+[docs/design/m2-stacks.md](docs/design/m2-stacks.md).
 
-## The Drawer
+## Stacks
 
-Click the puzzle icon and the Drawer opens under it: the widgets you stowed
-off the bar, running live exactly as they did in it, in the order you
-arranged them. Click one and its own popup opens, with the Drawer still under
-it; closing the Drawer closes that popup too. **Manage** in the Drawer's
-header opens the plugin manager described below, and its back arrow returns.
+A stack is one slot on the bar with a fixed width. It holds cards, and each
+card is a row of widgets you choose. The bar shows one card at a time:
+scroll over the stack to flip to the next one, round and round, and the new
+card slides in. At the stack's right end (its bottom on a vertical bar) is a
+narrow strip of circles, one per card, with the current card's drawn as a
+longer, brighter pill: it is always free to scroll over, and it brightens
+while you hover it. A card wider
+than its stack fans out while you hover it, pushing its neighbours aside, and
+folds back when you leave; the strip stays beside it. Click a widget in a stack and its own popup opens,
+as it would anywhere on the bar. Stacks can sit anywhere, and you can have as
+many as you like (up to 32).
 
-To stow a widget, open **Arrange** and drag it into the **Drawer** column;
-drag it back to a section to put it on the bar again. Every widget lives in
-exactly one place. In the manager, a stowed widget's switch turns it off and
-on again without losing its spot, and the "where should it go?" question
-offers the Drawer as an answer. A stowed widget that is uninstalled or fails
-to load stays as a `⚠` placeholder saying why, until you remove it with the
-`✕` in Arrange; nothing is cleaned up behind your back.
+Click the puzzle icon to open the Drawer, where stacks are built:
 
-How it works, briefly: Omniplug keeps the Drawer's order in its own entry in
-`~/.config/omarchy/shell.json` (`drawer: [...]`), keeps each stowed widget
-enabled with a `plugins[]` entry that also holds its settings, and marks a
-switched-off one in `disabledPlugins`, so the host's own `omarchy plugin
-enable`/`disable` agree with it. Hosting another plugin's widget relies on
-the bar's internals rather than a public API, the same way Bar Drawer and
-Groups do, so keep at least one built-in `omarchy.*` widget on the bar:
-Arrange refuses to stow the last one. Hotkeys that summon a stowed widget's
-panel are not supported yet.
+- **New stack** adds an empty one at the end of the right section. Move it
+  around the bar in **Arrange**, like any other entry.
+- The **On the bar** strip lists what is on the bar now. Drag a widget from it
+  into a card, or onto **+ New card**. Drag it between cards to rearrange, or
+  back to the strip to put it on the bar again. A card that loses its last
+  widget goes away.
+- Each stack has its width (the `−`/`+` buttons, in steps of 20 px) and
+  **Delete**, which puts its
+  widgets back on the bar where the stack was.
+- **Manage** opens the plugin manager described below, and its back arrow
+  returns to the Drawer.
+
+Every widget lives in exactly one place: a bar section or one card. In the
+manager, a stacked widget's switch turns it off and on again without losing
+its spot; while off, it is hidden on the bar and dimmed in the Drawer. A
+stacked widget that is uninstalled or fails to load shows as a `⚠`
+placeholder until you remove it with its `✕` in the Drawer. Widgets you
+stowed with the earlier Drawer are moved into one new stack the first time
+Omniplug can write.
+
+How it works, briefly: a stack is an Omniplug bar entry `{"id":
+"io.github.h3sam.omniplug", "stack": "s1"}` that never changes once made. Its
+cards and settings live in Omniplug's entry in `plugins[]` (`stacks: {...}`)
+in `~/.config/omarchy/shell.json`, so rearranging cards or changing a width
+never rebuilds the bar. Each stacked widget keeps a `plugins[]` entry that
+holds its settings and keeps it enabled, and a switched-off one is listed in
+`disabledPlugins`, so the host's own `omarchy plugin enable`/`disable` agree
+with Omniplug. Hosting another plugin's widget relies on the bar's internals
+rather than a public API, the same way Bar Drawer and Groups do, so keep at
+least one built-in `omarchy.*` widget on the bar: Omniplug refuses to stack
+the last one. Move stacks with **Arrange** rather than by dragging them on the
+bar: the bar's own drag finds entries by name, and every stack shares
+Omniplug's. Hotkeys that summon a stacked widget's panel are not supported
+yet.
 
 Everything below describes the manager itself, as inherited.
 

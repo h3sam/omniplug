@@ -825,29 +825,35 @@ function needsPlacement(row) {
   return kinds.indexOf("bar-widget") >= 0
 }
 
-// withDrawer adds Omniplug's Drawer as a fourth answer, when Placement can
-// stow right now (see docs/design/m1-drawer.md).
-function placementOptions(withDrawer) {
-  var options = [
+function placementOptions() {
+  return [
     { value: "left", label: "Left" },
     { value: "center", label: "Center" },
     { value: "right", label: "Right" }
   ]
-  if (withDrawer === true) options.push({ value: "drawer", label: "Drawer" })
-  return options
 }
 
 // The plugin list says a bar widget is enabled only while it sits in the bar,
-// so on its own it reports every stowed widget as off. Placement's board knows
-// better: a stowed row is on unless it was switched off, lives in the
-// "drawer", and can always be switched off (Omniplug remembers its spot).
-// Rows that are not stowed are returned untouched, and so is the whole list
-// when nothing is stowed.
+// so on its own it reports every stacked widget as off. Placement's board
+// knows better: a stacked row is on unless it was switched off, lives in a
+// "stack", and can always be switched off (Omniplug remembers its card spot).
+// Rows that are not stacked are returned untouched, and so is the whole list
+// when nothing is stacked. See docs/design/m2-stacks.md.
 function withStowed(rows, board) {
-  var drawer = board && board.zones && board.zones.drawer ? board.zones.drawer : null
-  if (!rows || !drawer || drawer.length === 0) return rows
+  if (!rows || !board) return rows
   var stowed = {}
-  for (var i = 0; i < drawer.length; i++) if (drawer[i] && drawer[i].id) stowed[drawer[i].id] = drawer[i]
+  var any = false
+  var stacks = (board.stacks || []).concat(board.orphans || [])
+  for (var s = 0; s < stacks.length; s++) {
+    var cards = stacks[s] && stacks[s].cards ? stacks[s].cards : []
+    for (var c = 0; c < cards.length; c++) {
+      for (var i = 0; i < cards[c].length; i++) {
+        var slot = cards[c][i]
+        if (slot && slot.id) { stowed[slot.id] = slot; any = true }
+      }
+    }
+  }
+  if (!any) return rows
   var changed = false
   var out = []
   for (var r = 0; r < rows.length; r++) {
@@ -858,7 +864,7 @@ function withStowed(rows, board) {
     for (var key in row) copy[key] = row[key]
     copy.stowed = true
     copy.enabled = slot.state !== "off"
-    copy.barSection = "drawer"
+    copy.barSection = "stack"
     copy.canDisable = true
     out.push(copy)
     changed = true
