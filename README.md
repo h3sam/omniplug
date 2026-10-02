@@ -54,7 +54,9 @@ holds its settings and keeps it enabled, and a switched-off one is listed in
 with Omniplug. Hosting another plugin's widget relies on the bar's internals
 rather than a public API, the same way Bar Drawer and Groups do, so keep at
 least one built-in `omarchy.*` widget on the bar: Omniplug refuses to stack
-the last one. Hotkeys that summon a stacked widget's panel are not supported
+the last one. Move stacks with **Arrange** rather than by dragging them on the
+bar: the bar's own drag finds entries by name, and every stack shares
+Omniplug's. Hotkeys that summon a stacked widget's panel are not supported
 yet.
 
 Everything below describes the manager itself, as inherited.
