@@ -191,12 +191,28 @@ function hostingWheelStep(accumulated, delta) {
 }
 
 // The stack's extent along the bar: its fixed width at rest, the showing
-// card's natural width while it fans out (only ever wider), and a small
-// marker when there is nothing to show.
+// card's natural width plus the flip strip while it fans out (only ever
+// wider), and a small marker when there is nothing to show. The fixed width
+// includes the strip, so the strip is never given up to a widget.
 function hostingStackExtent(facts) {
   var f = facts || {}
   if (!f.hasCards) return Math.max(0, f.emptyExtent || 0)
   var fixed = Math.max(0, f.fixed || 0)
-  var natural = Math.max(0, f.natural || 0)
-  return f.fanned && natural > fixed ? natural : fixed
+  var full = Math.max(0, f.natural || 0) + Math.max(0, f.handle || 0)
+  return f.fanned && full > fixed ? full : fixed
+}
+
+// The flip strip's circles, one per card, fitted into the bar's thickness:
+// { size, spacing } in pixels, never smaller than 2.
+function hostingDotMetrics(count, room, preferredSize, preferredSpacing) {
+  var n = Math.max(1, Math.floor(count) || 1)
+  var size = preferredSize || 4
+  var spacing = preferredSpacing || 3
+  var needed = n * size + (n - 1) * spacing
+  if (room > 0 && needed > room) {
+    var pitch = (room + spacing) / n
+    spacing = Math.max(1, Math.min(spacing, Math.floor(pitch / 3)))
+    size = Math.max(2, Math.floor(pitch - spacing))
+  }
+  return { size: size, spacing: spacing }
 }

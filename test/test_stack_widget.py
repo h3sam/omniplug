@@ -231,8 +231,8 @@ class StackWidgetTest(unittest.TestCase):
         QTest.mouseMove(self.window, QPoint(50, 15))
         self.settle(250)
         self.assertEqual(self.js("stack.fanned"), True, "hovering fans a wide card out")
-        self.assertEqual(self.js("stack.targetExtent"), 300)
-        self.assertEqual(self.js("stack.implicitWidth"), 300, "the bar slot grows, pushing neighbours aside")
+        self.assertEqual(self.js("stack.targetExtent"), 312, "the card plus the flip strip")
+        self.assertEqual(self.js("stack.implicitWidth"), 312, "the bar slot grows, pushing neighbours aside")
         self.js("stack.flip(1)")
         self.settle(250)
         self.assertEqual(self.js("stack.targetExtent"), 100, "a narrow card never fans wider than the stack")
@@ -258,6 +258,23 @@ class StackWidgetTest(unittest.TestCase):
         self.js("port.activePopout = null")
         self.settle()
         self.assertEqual(self.js("facade.requested.length"), 0, "no reclaiming: a stack is not a popout owner")
+
+    def test_the_flip_strip_keeps_its_room_dims_until_hovered_and_flipping_slides(self):
+        self.make(config([["omarchy.clock"], ["acme.vpn"], ["acme.wide"]]), screen="strip")
+        strip = 'stack.children.find(c => c.objectName === "flipStrip")'
+        self.assertEqual(self.js(strip + ".visible"), True)
+        self.assertEqual(self.js(strip + ".width"), 12)
+        self.assertEqual(self.js(strip + ".x"), 148, "at the trailing end of the 160 px stack")
+        self.assertLess(self.js(strip + ".opacity"), 0.5, "dim at rest")
+        QTest.mouseMove(self.window, QPoint(154, 15))
+        self.settle(200)
+        self.assertEqual(self.js(strip + ".opacity"), 1, "bright while hovered")
+        self.js("stack.flip(1)")
+        self.assertNotEqual(self.js("stack.slide"), 0, "the new card starts off to the side")
+        self.settle(250)
+        self.assertEqual(self.js("stack.slide"), 0)
+        self.make(config([["omarchy.clock"]]), screen="single")
+        self.assertEqual(self.js(strip + ".visible"), False, "one card has nothing to flip to")
 
 
 if __name__ == "__main__":

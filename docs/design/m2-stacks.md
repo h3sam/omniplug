@@ -194,8 +194,15 @@ IPC handler, no PopupBridge registration.
   ends 300 ms after the pointer leaves, unless one of the card's widgets owns
   the bar's popout.
 - **The wheel** flips one card per notch (or per 120 units of pixel delta),
-  wrapping around. The indicator, when on, is a row of small dots along the
-  edge away from the screen edge.
+  wrapping around. The new card slides in a few pixels from the side it came
+  from and fades up (160 ms); nothing animates between flips.
+- **The flip strip** sits at the trailing end (the bottom on a vertical bar)
+  whenever there is more than one card. No widget is ever placed there, at
+  rest or fanned out (a fanned card grows to its width plus the strip), so it
+  is always somewhere to scroll. It shows one circle per card, stacked across
+  the bar's thickness and shrunk to fit, the showing card's brightest. It is
+  very dim until hovered. With the indicator off, it keeps its room and shows
+  a single line. The fixed width includes it.
 - **Settings for stacked widgets** come from their carriers, injected exactly
   as in M1.
 

@@ -43,11 +43,14 @@ Item {
   readonly property int barSize: stack.port && stack.port.barSize > 0 ? stack.port.barSize : Style.bar.sizeHorizontal
   readonly property real fixedExtent: stack.definition ? stack.definition.width : Placement.PLACEMENT_DEFAULT_WIDTH
   readonly property real naturalExtent: stack.vertical ? row.implicitHeight : row.implicitWidth
-  readonly property bool wide: stack.naturalExtent > stack.fixedExtent
+  // The flip strip at the trailing end: room that is always the wheel's, and
+  // the card indicator. Only when there is more than one card to flip to.
+  readonly property real handleExtent: stack.cards.length > 1 ? Style.space(12) : 0
+  readonly property bool wide: stack.naturalExtent + stack.handleExtent > stack.fixedExtent
   property bool fanned: false
   readonly property real targetExtent: HostingModel.hostingStackExtent({
     hasCards: stack.cards.length > 0, fixed: stack.fixedExtent, natural: stack.naturalExtent,
-    fanned: stack.fanned, emptyExtent: emptyIcon.implicitWidth + Style.space(8)
+    handle: stack.handleExtent, fanned: stack.fanned, emptyExtent: emptyIcon.implicitWidth + Style.space(8)
   })
   property real extent: stack.targetExtent
   Behavior on extent {
@@ -65,7 +68,16 @@ Item {
     if (stack.cards.length < 2 || step === 0) return
     stack.requested = HostingModel.hostingWrap(stack.current, step, stack.cards.length)
     StackMemory.set(stack.screenName, stack.sid, stack.requested)
+    // The new card slides in a little from the side it came from.
+    slideIn.from = step > 0 ? Style.space(10) : -Style.space(10)
+    slideIn.restart()
+    fadeIn.restart()
   }
+
+  // Where the card sits along the bar during the slide, and how faded.
+  property real slide: 0
+  NumberAnimation { id: slideIn; target: stack; property: "slide"; to: 0; duration: 160; easing.type: Easing.OutCubic }
+  NumberAnimation { id: fadeIn; target: viewport; property: "opacity"; from: 0.25; to: 1; duration: 160; easing.type: Easing.OutCubic }
 
   readonly property var stage: hostStage
 
@@ -116,7 +128,12 @@ Item {
   // and is clipped; a narrow one is centred in the fixed width.
   Item {
     id: viewport
-    anchors.fill: parent
+    // Everything but the flip strip; a wide card is clipped here, not under it.
+    x: 0
+    y: 0
+    width: stack.vertical ? stack.width : Math.max(0, stack.width - stack.handleExtent)
+    height: stack.vertical ? Math.max(0, stack.height - stack.handleExtent) : stack.height
+    clip: true
 
     Grid {
       id: row
@@ -127,8 +144,8 @@ Item {
       flow: stack.vertical ? Grid.TopToBottom : Grid.LeftToRight
       spacing: 0
       x: stack.vertical ? Math.round((viewport.width - width) / 2)
-        : Math.round(Math.max(0, (viewport.width - width) / 2))
-      y: stack.vertical ? Math.round(Math.max(0, (viewport.height - height) / 2))
+        : Math.round(Math.max(0, (viewport.width - width) / 2) + stack.slide)
+      y: stack.vertical ? Math.round(Math.max(0, (viewport.height - height) / 2) + stack.slide)
         : Math.round((viewport.height - height) / 2)
 
       Repeater {
@@ -160,30 +177,59 @@ Item {
     font.pixelSize: Style.font.body
   }
 
-  // Which card is up, along the edge away from the screen edge.
-  Grid {
-    id: dots
-    visible: !!stack.definition && stack.definition.dots && stack.cards.length > 1
-    spacing: Style.space(3)
-    columns: stack.vertical ? 1 : Placement.PLACEMENT_MAX_CARDS
-    rows: stack.vertical ? Placement.PLACEMENT_MAX_CARDS : 1
-    readonly property string edge: stack.port ? String(stack.port.position || "top") : "top"
-    readonly property real inset: Style.space(2)
-    x: !stack.vertical ? Math.round((stack.width - width) / 2)
-      : dots.edge === "left" ? stack.width - width - dots.inset : dots.inset
-    y: stack.vertical ? Math.round((stack.height - height) / 2)
-      : dots.edge === "top" ? stack.height - height - dots.inset : dots.inset
+  // The flip strip: one circle per card, the showing one brightest, stacked
+  // across the bar's thickness at the trailing end. Dim until hovered, so it
+  // says "scroll here" without shouting. With the indicator switched off in
+  // the Drawer, the strip keeps its room and shows a single line instead.
+  Item {
+    id: handle
+    objectName: "flipStrip"
+    visible: stack.handleExtent > 0
+    x: stack.vertical ? 0 : stack.width - width
+    y: stack.vertical ? stack.height - height : 0
+    width: stack.vertical ? stack.width : stack.handleExtent
+    height: stack.vertical ? stack.handleExtent : stack.height
 
-    Repeater {
-      model: dots.visible ? stack.cards.length : 0
+    HoverHandler { id: handleHover }
+    readonly property bool showDots: !!stack.definition && stack.definition.dots
+    readonly property var metrics: HostingModel.hostingDotMetrics(stack.cards.length,
+      (stack.vertical ? handle.width : handle.height) - Style.space(6), Style.space(4), Style.space(3))
+    opacity: handleHover.hovered ? 1 : 0.3
+    Behavior on opacity {
+      NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+    }
 
-      Rectangle {
-        required property int index
-        width: Style.space(3)
-        height: width
-        radius: width / 2
-        color: Util.alpha(stack.foreground, index === stack.current ? 0.9 : 0.3)
+    Grid {
+      id: dots
+      anchors.centerIn: parent
+      visible: handle.showDots
+      columns: stack.vertical ? Placement.PLACEMENT_MAX_CARDS : 1
+      rows: stack.vertical ? 1 : Placement.PLACEMENT_MAX_CARDS
+      spacing: handle.metrics.spacing
+
+      Repeater {
+        model: handle.visible && handle.showDots ? stack.cards.length : 0
+
+        Rectangle {
+          required property int index
+          width: handle.metrics.size
+          height: width
+          radius: width / 2
+          color: Util.alpha(stack.foreground, index === stack.current ? 1 : 0.4)
+          Behavior on color {
+            ColorAnimation { duration: 120 }
+          }
+        }
       }
+    }
+
+    Rectangle {
+      anchors.centerIn: parent
+      visible: !handle.showDots
+      width: stack.vertical ? Math.round(handle.width * 0.5) : Style.space(2)
+      height: stack.vertical ? Style.space(2) : Math.round(handle.height * 0.5)
+      radius: Math.min(width, height) / 2
+      color: stack.foreground
     }
   }
 }

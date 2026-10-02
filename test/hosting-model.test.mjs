@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../HostingModel.js", import.meta.url), "utf
 const H = Function(source + `; return { hostingIsHostBar, hostingCanWrite, hostingFindHostBar,
   hostingIsDescendant, hostingTiles, hostingSettings, hostingSettingsKey, hostingTileState,
   hostingReasonText, hostingPopoutVerdict, HOSTING_MAX_ENTRIES, hostingStackCards, hostingStackEntries,
-  hostingWrap, hostingWheelStep, hostingStackExtent }`)()
+  hostingWrap, hostingWheelStep, hostingStackExtent, hostingDotMetrics }`)()
 
 const barRoot = (over = {}) => ({
   pluginBarApiFor() {}, requestPopout() {}, registerModuleSlot() {}, barWidgetRegistry: {}, ...over
@@ -130,4 +130,21 @@ test("a stack keeps its fixed width and only fans out wider, while hovered", () 
   assert.equal(H.hostingStackExtent({ ...base, fanned: true }), 300)
   assert.equal(H.hostingStackExtent({ ...base, fanned: true, natural: 100 }), 160, "a narrow card never shrinks it")
   assert.equal(H.hostingStackExtent({ ...base, hasCards: false }), 20)
+})
+
+test("a fanned card keeps the flip strip beside it, and the fixed width already includes the strip", () => {
+  const base = { hasCards: true, fixed: 160, natural: 300, handle: 12, emptyExtent: 20 }
+  assert.equal(H.hostingStackExtent(base), 160)
+  assert.equal(H.hostingStackExtent({ ...base, fanned: true }), 312, "the card, plus room to scroll")
+  assert.equal(H.hostingStackExtent({ ...base, fanned: true, natural: 140 }), 160, "152 fits in 160")
+  assert.equal(H.hostingStackExtent({ ...base, fanned: true, natural: 150 }), 162)
+})
+
+test("the flip strip's circles fit the bar's thickness, however many cards there are", () => {
+  assert.deepEqual(H.hostingDotMetrics(3, 24, 4, 3), { size: 4, spacing: 3 })
+  const six = H.hostingDotMetrics(6, 24, 4, 3)
+  assert.ok(6 * six.size + 5 * six.spacing <= 24, "shrunk to fit")
+  assert.deepEqual(H.hostingDotMetrics(16, 24, 4, 3), { size: 2, spacing: 1 },
+    "never below the floor; the stack clips the rest")
+  assert.deepEqual(H.hostingDotMetrics(5, 0, 4, 3), { size: 4, spacing: 3 }, "unknown room keeps the preference")
 })
