@@ -102,9 +102,9 @@ test("Arrange wires a themed board to guarded persistence with inventory labels"
   assert.match(expanded, /labels\[row\.id\] = row\.name/)
   const board = expanded.split("BarLayoutPane {")[1].split("Flickable {")[0]
   assert.match(board, /busy: root\.busy/)
-  assert.match(board, /onMoveRequested:[\s\S]*?root\.requestArrangeMove\(/)
-  // Bar-only drops still reach the guarded omarchy-bar path.
-  assert.match(expanded, /function requestArrangeMove\([^)]*\) \{[\s\S]*?if \(!intent\) return requestBarMove\(/)
+  // Every drop reaches the guarded omarchy-bar path; stacks are built in the Drawer.
+  assert.match(board, /onMoveRequested:[\s\S]*?root\.requestBarMove\(/)
+  assert.doesNotMatch(board, /drawer/)
   for (const property of ["fill", "rowFill", "foreground", "mutedForeground", "borderColor", "accent", "fontFamily", "fontPixelSize", "spacing", "radius", "rowHeight"])
     assert.match(board, new RegExp(`${property}: (root\\.|Color\\.|Style\\.)`))
 })

@@ -5,7 +5,7 @@ import "PopupBridge.js" as PopupBridge
 // Placement's owner: the one place a placement intent is turned into a write.
 // It lives in the expanded panel, which stays loaded while the bar (and every
 // popup) is rebuilt around it, and the popup reaches it through PopupBridge.
-// See docs/design/m1-drawer.md, Placement.
+// See docs/design/m1-drawer.md, Placement, and docs/design/m2-stacks.md.
 //
 // Callers read `board` and send `request(intent)`; the result is a ticket
 //   { serial, ok, phase: "landed"|"refused"|"sent"|"unconfirmed", reason, note,
@@ -84,9 +84,7 @@ Item {
     if (plan.noOp) return owner.settle({ ok: true, phase: "landed", noOp: true, id: id })
 
     var result
-    if (plan.channel === "own") {
-      result = owner.port.writeOwn(owner.selfId, JSON.parse(JSON.stringify(plan.ownSettings)))
-    } else if (plan.channel === "config") {
+    if (plan.channel === "config") {
       // Re-planned inside the writer against the host's own copy; a throw
       // means nothing was persisted.
       result = owner.port.mutate(function(copy) { Placement.placementAssign(copy, plan, facts) })
@@ -110,16 +108,10 @@ Item {
       note: Placement.PLACEMENT_NOTES[reason] || Placement.PLACEMENT_NOTES.invalid })
   }
 
-  // Landed when the host shows what the plan expected. An own-entry write is
-  // judged by the drawer order alone, which is all a partial read can see.
+  // Landed when the host shows what the plan expected.
   function landed(plan) {
     var board = owner.config ? Placement.placementBoard(owner.config, owner.placementFacts) : null
-    if (!board) return false
-    if (plan.channel === "own") {
-      var ids = board.zones.drawer.map(function(slot) { return slot.id })
-      return JSON.stringify(ids) === JSON.stringify(plan.ownSettings.drawer || [])
-    }
-    return board.key === plan.expectedKey
+    return !!board && board.key === plan.expectedKey
   }
 
   function verify() {

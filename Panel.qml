@@ -232,12 +232,10 @@ Panel {
   property bool settingsOpen: false
   property bool arrangeOpen: false
   readonly property var barSnapshot: popupMoveOwner ? popupMoveOwner.snapshot : null
-  // The expanded window's Placement owner, which writes every Drawer change.
+  // The expanded window's Placement owner, which writes every stack change.
   readonly property var placementOwner: popupMoveOwner && popupMoveOwner.placement ? popupMoveOwner.placement : null
-  readonly property var arrangeSnapshot: Placement.placementArrangeSnapshot(barSnapshot,
-    placementOwner ? placementOwner.board : null)
   // This popup often has the plugin list before the expanded window does;
-  // Placement needs it (kinds, built-in or not) to stow anything.
+  // Placement needs it (kinds, built-in or not) to stack anything.
   function offerPlacementFacts() {
     if (placementOwner && typeof placementOwner.offerFacts === "function")
       placementOwner.offerFacts(Placement.placementFactsFromRows(store.rows))
@@ -328,27 +326,6 @@ Panel {
     if (!opened || !arrangeOpen || contentFlipping || busy || store.actionRunning || !popupMoveOwner
         || popupMoveOwner.busy || popupMoveOwner.pending || !hostWidget) return false
     return hostWidget.requestPopupMove(snapshot, fromSection, fromIndex, section, gap)
-  }
-
-  // A drop that involves the Drawer goes to Placement's owner; a move between
-  // bar sections keeps the omarchy-bar path above.
-  function requestArrangeMove(snapshot, fromSection, fromIndex, section, gap) {
-    var intent = Placement.placementIntentFor(snapshot, fromSection, fromIndex, section, gap)
-    if (!intent) return requestBarMove(snapshot && snapshot.bar ? snapshot.bar : snapshot, fromSection, fromIndex, section, gap)
-    return requestPlacement(intent)
-  }
-
-  function requestArrangeRemove(snapshot, section, index) {
-    var intent = Placement.placementRemovalFor(snapshot, section, index)
-    return intent ? requestPlacement(intent) : false
-  }
-
-  function requestPlacement(intent) {
-    if (!opened || !arrangeOpen || contentFlipping || busy || store.actionRunning || !popupMoveOwner
-        || popupMoveOwner.busy || popupMoveOwner.pending || !hostWidget
-        || typeof hostWidget.requestPopupPlacement !== "function") return false
-    var ticket = hostWidget.requestPopupPlacement(intent)
-    return !!ticket && ticket.ok
   }
 
   function useCurrentLayout() {
@@ -1982,9 +1959,7 @@ Panel {
           anchors.top: arrangeStatus.bottom
           anchors.topMargin: Style.space(12)
           anchors.bottom: parent.bottom
-          snapshot: root.arrangeSnapshot
-          sections: root.arrangeSnapshot && root.arrangeSnapshot.placementKey
-            ? ["left", "center", "right", "drawer"] : ["left", "center", "right"]
+          snapshot: root.barSnapshot
           busy: root.arrangeBusy || (!!root.placementOwner && root.placementOwner.busy)
           labels: {
             var labels = Object.create(null)
@@ -1992,10 +1967,7 @@ Panel {
             return labels
           }
           onMoveRequested: function(snapshot, fromSection, rawIndex, targetSection, preRemovalGap) {
-            root.requestArrangeMove(snapshot, fromSection, rawIndex, targetSection, preRemovalGap)
-          }
-          onRemoveRequested: function(snapshot, section, index) {
-            root.requestArrangeRemove(snapshot, section, index)
+            root.requestBarMove(snapshot, fromSection, rawIndex, targetSection, preRemovalGap)
           }
           fill: Color.menu.background
           rowFill: Style.normalFill

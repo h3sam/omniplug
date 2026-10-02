@@ -1,33 +1,50 @@
 // Placement: which zone every widget lives in, and the one shell.json change
 // that moves it somewhere else.
 //
-// Pure. Nothing here touches the host; the QML owner (Placement.qml) reads the
-// config through a port, asks for a plan, and hands the plan to a write
-// channel. The design lives in docs/design/m1-drawer.md; the words used here
-// (zone, entry, carrier, board, intent) are defined in its glossary.
+// Pure. Nothing here touches the host; the QML owner (PlacementOwner.qml)
+// reads the config through a port, asks for a plan, and hands the plan to a
+// write channel. The design lives in docs/design/m1-drawer.md and
+// docs/design/m2-stacks.md; the words used here (zone, entry, carrier, board,
+// intent, stack, card, stack store) are defined in their glossaries.
 //
-// The zones are the three bar sections plus the Drawer. Where each is stored:
+// The zones are the three bar sections plus stacks. Where each is stored:
 //   left/center/right  bar.layout, exactly as the host keeps it
-//   drawer             Omniplug's own entry: `drawer: [id, ...]`, in order
-// and the two host lists that decide whether a stowed widget runs at all:
-//   plugins[]          a carrier `{id, ...settings}` per stowed widget. It keeps
-//                      a third-party widget enabled (PluginRegistry.isEnabled
+//   stack              a stack is an Omniplug bar entry `{id, stack: sid}`,
+//                      written once and never changed (Omniplug's id is on the
+//                      bar more than once, so any change to one of its entries
+//                      rebuilds the whole bar). What it shows lives in the
+//                      stack store, Omniplug's plugins[] entry:
+//                      `{id, stacks: {sid: {width, dots, cards: [[id, ...]]}}}`
+// and the two host lists that decide whether a stacked widget runs at all:
+//   plugins[]          a carrier `{id, ...settings}` per stacked widget. It
+//                      keeps a third-party widget enabled (PluginRegistry
 //                      looks for an entry in the layout or plugins[]), and it
 //                      is where the widget's own updateEntryInline saves land
 //                      while it is off the bar
 //   disabledPlugins    an id here is off. The host checks this list first, for
-//                      first- and third-party widgets alike, so a stowed widget
-//                      turned off keeps both its drawer spot and its carrier
+//                      first- and third-party widgets alike, so a stacked
+//                      widget turned off keeps both its card spot and carrier
+//
+// M1 kept stowed widgets in `drawer: [id, ...]` on Omniplug's own (icon)
+// entry. That list is read as `legacyDrawer`, and the migrateDrawer intent
+// turns it into a stack.
 
 var PLACEMENT_BAR_ZONES = ["left", "center", "right"]
-var PLACEMENT_ZONES = ["left", "center", "right", "drawer"]
-var PLACEMENT_TARGETS = ["left", "center", "right", "drawer", "off", "remove"]
+var PLACEMENT_TARGETS = ["left", "center", "right", "stack", "off", "on", "remove"]
+var PLACEMENT_OPS = ["newStack", "deleteStack", "stackSettings", "migrateDrawer", "selfSetting"]
 
 var PLACEMENT_MAX_SECTION = 128
-var PLACEMENT_MAX_DRAWER = 64
+var PLACEMENT_MAX_LEGACY = 64
 var PLACEMENT_MAX_LIST = 1024
 var PLACEMENT_MAX_NODES = 32768
 var PLACEMENT_MAX_UNITS = 1048576
+var PLACEMENT_MAX_STACKS = 32
+var PLACEMENT_MAX_CARDS = 16
+var PLACEMENT_MAX_CARD = 32
+var PLACEMENT_MAX_STACKED = 64
+var PLACEMENT_MIN_WIDTH = 24
+var PLACEMENT_MAX_WIDTH = 1200
+var PLACEMENT_DEFAULT_WIDTH = 160
 
 // Where an unanchored bar insertion lands: after the widget that usually opens
 // each section, else at its end. Today's popup section choice uses the same.
@@ -37,17 +54,20 @@ var PLACEMENT_NOTES = {
   stale: "The bar changed since this was shown. Nothing was moved.",
   busy: "Another change is still being saved. Nothing was moved.",
   invalid: "That move is not possible. Nothing was moved.",
-  self: "Omniplug holds the drawer, so it cannot go in it.",
-  notStowable: "Only plain bar widgets can go in the drawer. Nothing was moved.",
-  lastBuiltin: "Keep one Omarchy widget on the bar: the drawer finds the bar through it.",
+  self: "Omniplug and its stacks cannot go inside a stack.",
+  notStowable: "Only plain bar widgets can go in a stack. Nothing was moved.",
+  lastBuiltin: "Keep one Omarchy widget on the bar: stacks find the bar through it.",
   duplicate: "This widget is on the bar more than once. Remove the extra copy first.",
-  conflict: "This widget is both on the bar and in the drawer. Move one copy by hand first.",
-  needsBarAccess: "The drawer cannot reach the bar right now, so it cannot take or return widgets.",
+  conflict: "This widget is both on the bar and in a stack. Move one copy by hand first.",
+  needsBarAccess: "Omniplug cannot reach the bar right now, so it cannot change stacks.",
   untransportable: "This entry ID cannot be passed to omarchy-bar. Nothing was moved.",
   limits: "The shell config is too large to change safely. Nothing was moved.",
   unreadable: "The shell config or plugin list could not be read whole. Nothing was moved.",
-  notStowed: "That widget is not in the drawer.",
-  notPlaced: "That widget is not placed anywhere yet."
+  notStowed: "That widget is not in a stack.",
+  notPlaced: "That widget is not placed anywhere yet.",
+  noStack: "That stack does not exist any more. Nothing was moved.",
+  full: "That stack is full. Nothing was moved.",
+  noLegacy: "There is nothing left from the old drawer to move."
 }
 
 function placementIsObject(value) {
@@ -59,6 +79,10 @@ function placementIsObject(value) {
 function placementValidId(id) {
   return typeof id === "string" && id.length > 0 && id.length <= 256
     && id.indexOf("/") < 0 && id.indexOf("..") < 0
+}
+
+function placementValidSid(sid) {
+  return typeof sid === "string" && /^[A-Za-z0-9_-]{1,16}$/.test(sid)
 }
 
 function placementEntryId(entry) {
@@ -78,6 +102,12 @@ function placementEntrySettings(entry) {
 function placementIsCustom(entry) {
   var settings = placementEntrySettings(entry)
   return !!(settings.type || settings.exec || settings.source)
+}
+
+// The stack an entry is, or "": only Omniplug's own entries can be stacks.
+function placementStackOf(entry, selfId) {
+  if (!placementIsObject(entry) || placementEntryId(entry) !== selfId) return ""
+  return typeof entry.stack === "string" ? entry.stack : ""
 }
 
 // A bounded, frozen deep copy: the only shape of host data this file ever
@@ -117,61 +147,98 @@ function placementThaw(value) {
   return JSON.parse(JSON.stringify(value))
 }
 
+function placementWidth(value) {
+  return typeof value === "number" && isFinite(value)
+    ? Math.round(Math.max(PLACEMENT_MIN_WIDTH, Math.min(PLACEMENT_MAX_WIDTH, value))) : PLACEMENT_DEFAULT_WIDTH
+}
+
 // ---- Reading -----------------------------------------------------------
 
 // The parts of shell.json placement cares about, validated and frozen, or a
-// thrown "invalid"/"limits". Omniplug's own entry is found wherever the host
-// keeps it: every copy in the layout (updateEntryInline rewrites them all),
-// else a plugins[] entry.
+// thrown "invalid"/"limits". Omniplug's own entry (the icon) is its first
+// layout entry that is not a stack.
 function placementRead(config, selfId) {
   if (!placementIsObject(config) || !placementIsObject(config.bar)
       || !placementIsObject(config.bar.layout)) throw new Error("invalid")
   var layoutKeys = Object.keys(config.bar.layout)
   if (layoutKeys.length !== 3) throw new Error("invalid")
   var layout = {}
+  var stackEntries = []
+  var seenSid = {}
+  var own = null
   for (var s = 0; s < PLACEMENT_BAR_ZONES.length; s++) {
-    var section = config.bar.layout[PLACEMENT_BAR_ZONES[s]]
+    var zone = PLACEMENT_BAR_ZONES[s]
+    var section = config.bar.layout[zone]
     if (!Array.isArray(section) || section.length > PLACEMENT_MAX_SECTION) throw new Error("invalid")
     for (var i = 0; i < section.length; i++) {
-      if (!placementValidId(placementEntryId(section[i]))) throw new Error("invalid")
+      var id = placementEntryId(section[i])
+      if (!placementValidId(id)) throw new Error("invalid")
+      if (id !== selfId) continue
+      if (placementIsObject(section[i]) && section[i].stack !== undefined) {
+        var sid = section[i].stack
+        // Two bar entries showing one stack would host its widgets twice.
+        if (!placementValidSid(sid) || seenSid[sid]) throw new Error("invalid")
+        seenSid[sid] = true
+        stackEntries.push({ sid: sid, zone: zone, index: i })
+      } else if (!own) {
+        own = { where: "layout", entry: section[i] }
+      }
     }
-    layout[PLACEMENT_BAR_ZONES[s]] = section
+    layout[zone] = section
   }
   var plugins = config.plugins === undefined ? [] : config.plugins
   var disabled = config.disabledPlugins === undefined ? [] : config.disabledPlugins
   if (!Array.isArray(plugins) || plugins.length > PLACEMENT_MAX_LIST) throw new Error("invalid")
   if (!Array.isArray(disabled) || disabled.length > PLACEMENT_MAX_LIST) throw new Error("invalid")
 
-  var own = null
-  for (var z = 0; z < PLACEMENT_BAR_ZONES.length && !own; z++) {
-    var entries = layout[PLACEMENT_BAR_ZONES[z]]
-    for (var j = 0; j < entries.length; j++) {
-      if (placementEntryId(entries[j]) === selfId) { own = { where: "layout", entry: entries[j] }; break }
-    }
+  var store = null
+  for (var p = 0; p < plugins.length; p++) {
+    if (placementIsObject(plugins[p]) && String(plugins[p].id) === selfId) { store = plugins[p]; break }
   }
-  if (!own) {
-    for (var p = 0; p < plugins.length; p++) {
-      if (placementIsObject(plugins[p]) && String(plugins[p].id) === selfId) {
-        own = { where: "plugins", entry: plugins[p] }
-        break
-      }
+
+  // M1's drawer list, on the icon or (when Omniplug was not on the bar) on
+  // its plugins[] entry.
+  var legacy = []
+  var legacySource = own ? placementEntrySettings(own.entry) : store ? placementEntrySettings(store) : {}
+  if (legacySource.drawer !== undefined) {
+    if (!Array.isArray(legacySource.drawer) || legacySource.drawer.length > PLACEMENT_MAX_LEGACY)
+      throw new Error("invalid")
+    var seenLegacy = {}
+    for (var d = 0; d < legacySource.drawer.length; d++) {
+      var stowed = legacySource.drawer[d]
+      if (!placementValidId(stowed) || seenLegacy[stowed]) throw new Error("invalid")
+      seenLegacy[stowed] = true
+      legacy.push(stowed)
     }
   }
 
-  var drawer = []
-  var ownSettings = own ? placementEntrySettings(own.entry) : {}
-  if (ownSettings.drawer !== undefined) {
-    if (!Array.isArray(ownSettings.drawer) || ownSettings.drawer.length > PLACEMENT_MAX_DRAWER)
-      throw new Error("invalid")
-    var seen = {}
-    for (var d = 0; d < ownSettings.drawer.length; d++) {
-      var stowed = ownSettings.drawer[d]
-      // Exactly once, by construction; a hand edit that repeats an id is not
-      // something to guess about.
-      if (!placementValidId(stowed) || seen[stowed]) throw new Error("invalid")
-      seen[stowed] = true
-      drawer.push(stowed)
+  // Stack definitions. An id is in at most one card of one stack; a hand edit
+  // that repeats one is not something to guess about. Empty cards are skipped.
+  var stacks = {}
+  var stacked = {}
+  var total = 0
+  var defs = store && store.stacks !== undefined ? store.stacks : {}
+  if (!placementIsObject(defs)) throw new Error("invalid")
+  var sids = Object.keys(defs)
+  if (sids.length > PLACEMENT_MAX_STACKS * 2) throw new Error("invalid")
+  for (var k = 0; k < sids.length; k++) {
+    var def = defs[sids[k]]
+    if (!placementValidSid(sids[k]) || !placementIsObject(def)) throw new Error("invalid")
+    var rawCards = def.cards === undefined ? [] : def.cards
+    if (!Array.isArray(rawCards) || rawCards.length > PLACEMENT_MAX_CARDS) throw new Error("invalid")
+    var cards = []
+    for (var c = 0; c < rawCards.length; c++) {
+      var card = rawCards[c]
+      if (!Array.isArray(card) || card.length > PLACEMENT_MAX_CARD) throw new Error("invalid")
+      for (var w = 0; w < card.length; w++) {
+        if (!placementValidId(card[w]) || stacked[card[w]] || card[w] === selfId) throw new Error("invalid")
+        stacked[card[w]] = true
+      }
+      total += card.length
+      if (card.length > 0) cards.push(card)
     }
+    if (total > PLACEMENT_MAX_STACKED) throw new Error("invalid")
+    stacks[sids[k]] = { width: placementWidth(def.width), dots: def.dots !== false, cards: cards }
   }
 
   return placementCopy({
@@ -179,7 +246,10 @@ function placementRead(config, selfId) {
     plugins: plugins,
     disabled: disabled,
     own: own,
-    drawer: drawer
+    store: store,
+    stackEntries: stackEntries,
+    stacks: stacks,
+    legacy: legacy
   })
 }
 
@@ -202,51 +272,62 @@ function placementName(facts, id) {
   return plugin && plugin.name ? String(plugin.name) : id
 }
 
-// The compare-and-swap key: ids and positions only. Settings are re-read from
-// the live config when the change is applied, so a widget saving its own
-// settings mid-drag does not make the user's move stale.
-function placementKeyOf(read) {
+// The compare-and-swap key: ids and positions only. Settings (a widget's own,
+// a stack's width) are re-read from the live config when the change is
+// applied, so a widget saving its own state mid-drag does not make the user's
+// move stale.
+function placementKeyOf(read, selfId) {
   var layout = {}
   for (var s = 0; s < PLACEMENT_BAR_ZONES.length; s++) {
-    layout[PLACEMENT_BAR_ZONES[s]] = read.layout[PLACEMENT_BAR_ZONES[s]].map(placementEntryId)
+    layout[PLACEMENT_BAR_ZONES[s]] = read.layout[PLACEMENT_BAR_ZONES[s]].map(function(entry) {
+      var sid = placementStackOf(entry, selfId)
+      return sid ? placementEntryId(entry) + "#" + sid : placementEntryId(entry)
+    })
   }
   var carriers = []
   for (var i = 0; i < read.plugins.length; i++) {
     if (placementIsObject(read.plugins[i])) carriers.push(String(read.plugins[i].id))
   }
+  var cards = {}
+  for (var sid in read.stacks) cards[sid] = read.stacks[sid].cards
   return JSON.stringify({
     layout: layout,
     carriers: carriers.sort(),
     disabled: read.disabled.map(String).slice().sort(),
-    drawer: read.drawer,
-    own: read.own ? read.own.where + ":" + (typeof read.own.entry === "string" ? "bare" : "object") : ""
+    stacks: cards,
+    legacy: read.legacy,
+    own: read.own ? (typeof read.own.entry === "string" ? "bare" : "object") : ""
   })
+}
+
+// The stacks in bar order, then the definitions no bar entry shows (orphans).
+function placementStackOrder(read) {
+  var onBar = read.stackEntries.map(function(entry) { return entry.sid })
+  var orphans = Object.keys(read.stacks).filter(function(sid) { return onBar.indexOf(sid) < 0 }).sort()
+  return { onBar: onBar, orphans: orphans }
 }
 
 // facts: { selfId, plugins: { id: { name, kinds, firstParty } } | null,
 //          canCross: bool, partial: bool }. plugins is null until the plugin
 // list has loaded. partial means `config` holds only what the scoped facade
-// can see (the bar), so plugins[] and disabledPlugins are unknown, not empty.
+// can see (the bar), so plugins[], disabledPlugins and the stack store are
+// unknown, not empty.
 function placementBoard(config, facts) {
   var selfId = facts && typeof facts.selfId === "string" ? facts.selfId : ""
   var read
   try { read = placementRead(config, selfId) } catch (error) { return null }
 
-  var zones = { left: [], center: [], right: [], drawer: [] }
+  var zones = { left: [], center: [], right: [] }
   var byId = {}
   var counts = {}
   var conflicts = []
   var known = !!(facts && facts.plugins)
   var partial = !!(facts && facts.partial)
 
-  function slot(id, zone, index, settings, state, custom) {
-    var result = Object.freeze({
-      id: id, zone: zone, index: index, name: placementName(facts, id),
-      settings: placementCopy(settings), state: state, custom: custom
-    })
-    zones[zone].push(result)
-    if (!byId[id]) byId[id] = result
-    return result
+  function freezeSlot(fields) {
+    fields.name = placementName(facts, fields.id)
+    fields.settings = placementCopy(fields.settings)
+    return Object.freeze(fields)
   }
 
   for (var s = 0; s < PLACEMENT_BAR_ZONES.length; s++) {
@@ -254,38 +335,67 @@ function placementBoard(config, facts) {
     var entries = read.layout[zone]
     for (var i = 0; i < entries.length; i++) {
       var id = placementEntryId(entries[i])
+      var sid = placementStackOf(entries[i], selfId)
       counts[id] = (counts[id] || 0) + 1
       var custom = placementIsCustom(entries[i])
       var missing = known && !custom && !facts.plugins[id]
-      slot(id, zone, i, placementEntrySettings(entries[i]), missing ? "missing" : "live", custom)
+      var slot = freezeSlot({ id: id, zone: zone, index: i, settings: placementEntrySettings(entries[i]),
+        state: missing ? "missing" : "live", custom: custom, stack: sid })
+      zones[zone].push(slot)
+      if (!byId[id]) byId[id] = slot
     }
   }
-  for (var d = 0; d < read.drawer.length; d++) {
-    var stowed = read.drawer[d]
-    if (counts[stowed]) conflicts.push(stowed)
-    var carrier = placementCarrier(read, stowed)
-    var state = "live"
-    if (read.disabled.indexOf(stowed) >= 0) state = "off"
-    else if (known && !facts.plugins[stowed]) state = "missing"
-    // A third-party widget with no carrier is not registered: something (the
-    // host's own `plugin disable`, a hand edit) dropped it. That is off.
-    else if (!partial && !carrier && !placementFirstParty(facts, stowed)) state = "off"
-    var stowedSlot = slot(stowed, "drawer", d, carrier ? placementEntrySettings(carrier) : {}, state, false)
-    byId[stowed] = counts[stowed] ? byId[stowed] : stowedSlot
+
+  function stackOf(sid, zone, index) {
+    var def = read.stacks[sid] || { width: PLACEMENT_DEFAULT_WIDTH, dots: true, cards: [] }
+    var cards = def.cards.map(function(card, c) {
+      return Object.freeze(card.map(function(member, w) {
+        var carrier = placementCarrier(read, member)
+        var state = "live"
+        if (read.disabled.indexOf(member) >= 0) state = "off"
+        else if (known && !facts.plugins[member]) state = "missing"
+        // A third-party widget with no carrier is not registered: something
+        // (the host's own `plugin disable`, a hand edit) dropped it. That is off.
+        else if (!partial && !carrier && !placementFirstParty(facts, member)) state = "off"
+        if (counts[member] && conflicts.indexOf(member) < 0) conflicts.push(member)
+        var slot = freezeSlot({ id: member, zone: "stack", index: w, stack: sid, card: c,
+          settings: carrier ? placementEntrySettings(carrier) : {}, state: state, custom: false })
+        if (!counts[member]) byId[member] = slot
+        return slot
+      }))
+    })
+    return Object.freeze({ sid: sid, zone: zone, index: index, width: def.width, dots: def.dots,
+      cards: Object.freeze(cards) })
   }
+
+  var stacks = read.stackEntries.map(function(entry) { return stackOf(entry.sid, entry.zone, entry.index) })
+  var order = placementStackOrder(read)
+  var orphans = order.orphans.map(function(sid) { return stackOf(sid, "", -1) })
   for (var z in zones) zones[z] = Object.freeze(zones[z])
 
   var canCross = !!(facts && facts.canCross)
   return Object.freeze({
-    key: placementKeyOf(read),
+    key: placementKeyOf(read, selfId),
     zones: Object.freeze(zones),
+    stacks: Object.freeze(stacks),
+    orphans: Object.freeze(orphans),
     byId: Object.freeze(byId),
-    duplicates: Object.freeze(Object.keys(counts).filter(function(id) { return counts[id] > 1 })),
+    duplicates: Object.freeze(Object.keys(counts).filter(function(id) {
+      return counts[id] > 1 && id !== selfId
+    })),
     conflicts: Object.freeze(conflicts),
-    canStow: canCross && known,
-    reason: !known ? "unreadable" : !canCross ? "needsBarAccess" : "",
+    legacyDrawer: read.legacy,
+    canStow: canCross && known && !partial,
+    reason: !known ? "unreadable" : !canCross || partial ? "needsBarAccess" : "",
     selfPlaced: !!read.own
   })
+}
+
+// The board's stack (on the bar or orphaned) with this sid, or null.
+function placementFindStack(board, sid) {
+  for (var i = 0; i < board.stacks.length; i++) if (board.stacks[i].sid === sid) return board.stacks[i]
+  for (var j = 0; j < board.orphans.length; j++) if (board.orphans[j].sid === sid) return board.orphans[j]
+  return null
 }
 
 // ---- Planning ----------------------------------------------------------
@@ -307,42 +417,13 @@ function placementAnchorGap(entries, zone) {
   return entries.length
 }
 
-// The canonical text of each region, to tell which ones a plan touched. Our
-// own entry is its own region even though it sits inside the layout (or
-// plugins[]): a change to it alone is what the public writer can make.
-function placementRegions(read, selfId) {
+// The canonical text of each region, to tell which ones a plan touched.
+function placementRegions(read) {
   return {
-    layout: JSON.stringify(placementStripOwn(read.layout, selfId)),
-    plugins: JSON.stringify(read.plugins.map(function(entry) {
-      return placementIsObject(entry) && String(entry.id) === selfId ? selfId : entry
-    })),
-    disabled: JSON.stringify(read.disabled),
-    own: JSON.stringify(read.own ? read.own.entry : null)
+    layout: JSON.stringify(read.layout),
+    plugins: JSON.stringify(read.plugins),
+    disabled: JSON.stringify(read.disabled)
   }
-}
-
-// Write the drawer list into every copy of Omniplug's own entry. A bare-string
-// own entry becomes an object; updateEntryInline could not have reached it.
-function placementWriteOwn(next, selfId, drawer) {
-  var wrote = false
-  for (var s = 0; s < PLACEMENT_BAR_ZONES.length; s++) {
-    var entries = next.bar.layout[PLACEMENT_BAR_ZONES[s]]
-    for (var i = 0; i < entries.length; i++) {
-      if (placementEntryId(entries[i]) !== selfId) continue
-      var entry = placementIsObject(entries[i]) ? entries[i] : { id: selfId }
-      entry.drawer = drawer.slice()
-      entries[i] = entry
-      wrote = true
-    }
-  }
-  if (wrote) return true
-  for (var p = 0; p < next.plugins.length; p++) {
-    if (placementIsObject(next.plugins[p]) && String(next.plugins[p].id) === selfId) {
-      next.plugins[p].drawer = drawer.slice()
-      return true
-    }
-  }
-  return false
 }
 
 function placementSetDisabled(next, id, off) {
@@ -395,216 +476,379 @@ function placementTransportable(id) {
   } catch (error) { return false }
 }
 
-// config: the live shell config. intent: { id, to, gap?, from?: {zone, index},
-// key? }. Returns a frozen plan:
-//   { ok, reason, note, id, noOp, channel: "own" | "config" | "cli",
-//     next, ownSettings, command, expectedKey, expectedLayout }
-// `next` is the whole config after the change. Channel "own" means only
-// Omniplug's own entry changed (write ownSettings with updateEntryInline);
-// "config" needs the in-process writer; "cli" is a bar-only move for
-// omarchy-bar when the writer cannot be reached.
+// The lowest unused stack id, counting both bar entries and definitions.
+function placementNewSid(read) {
+  var used = {}
+  for (var i = 0; i < read.stackEntries.length; i++) used[read.stackEntries[i].sid] = true
+  for (var sid in read.stacks) used[sid] = true
+  for (var n = 1; n <= PLACEMENT_MAX_STACKS * 2 + 1; n++) if (!used["s" + n]) return "s" + n
+  return ""
+}
+
+// Write the working stack definitions into the stack store, creating it only
+// when there is something to keep. An emptied store keeps its `{id}`: it may
+// be what keeps Omniplug enabled when it is not on the bar.
+function placementWriteStore(next, selfId, stacks, dropLegacy) {
+  var index = placementFindCarrierIndex(next, selfId)
+  var sids = Object.keys(stacks).sort()
+  if (index < 0 && sids.length === 0) return
+  var entry = index >= 0 ? next.plugins[index] : { id: selfId }
+  if (dropLegacy) delete entry.drawer
+  if (sids.length === 0) delete entry.stacks
+  else {
+    var out = {}
+    for (var i = 0; i < sids.length; i++) {
+      var def = stacks[sids[i]]
+      out[sids[i]] = { width: def.width, dots: def.dots,
+        cards: def.cards.filter(function(card) { return card.length > 0 }) }
+    }
+    entry.stacks = out
+  }
+  if (index < 0) next.plugins.push(entry)
+}
+
+// Every icon entry (Omniplug's own entries that are not stacks).
+function placementEachIcon(next, selfId, fn) {
+  for (var s = 0; s < PLACEMENT_BAR_ZONES.length; s++) {
+    var entries = next.bar.layout[PLACEMENT_BAR_ZONES[s]]
+    for (var i = 0; i < entries.length; i++) {
+      if (placementEntryId(entries[i]) !== selfId || placementStackOf(entries[i], selfId)) continue
+      var entry = placementIsObject(entries[i]) ? entries[i] : { id: selfId }
+      fn(entry)
+      entries[i] = entry
+    }
+  }
+}
+
+function placementCountStacked(stacks) {
+  var total = 0
+  for (var sid in stacks) for (var c = 0; c < stacks[sid].cards.length; c++) total += stacks[sid].cards[c].length
+  return total
+}
+
+// A bar entry may go into a stack: the checks M1 made for stowing.
+function placementStowRefusal(read, board, facts, id, entry) {
+  if (placementIsCustom(entry)) return "notStowable"
+  if (board.duplicates.indexOf(id) >= 0) return "duplicate"
+  if (facts && facts.plugins && facts.plugins[id] && !placementIsBarWidget(facts, id)) return "notStowable"
+  if (placementFirstParty(facts, id)) {
+    var builtins = 0
+    for (var s = 0; s < PLACEMENT_BAR_ZONES.length; s++) {
+      var section = read.layout[PLACEMENT_BAR_ZONES[s]]
+      for (var b = 0; b < section.length; b++) {
+        var other = placementEntryId(section[b])
+        if (other !== id && !placementIsCustom(section[b]) && placementFirstParty(facts, other)) builtins++
+      }
+    }
+    if (builtins === 0) return "lastBuiltin"
+  }
+  return ""
+}
+
+// config: the live shell config. intent: a widget intent
+//   { id, to, stack?, card?, gap?, from?, key? }
+// or a stack intent { op, ... } (see docs/design/m2-stacks.md). Returns a
+// frozen plan:
+//   { ok, reason, note, id, noOp, channel: "config" | "cli", touched,
+//     intent, baseKey, next, command, expectedKey, expectedLayout }
+// `next` is the whole config after the change. "config" needs the in-process
+// writer; "cli" is a bar-only move for omarchy-bar when the writer cannot be
+// reached.
 function placementPlan(config, facts, intent) {
   var selfId = facts && typeof facts.selfId === "string" ? facts.selfId : ""
-  if (!placementIsObject(intent) || !placementValidId(intent.id)
-      || PLACEMENT_TARGETS.indexOf(intent.to) < 0) return placementRefuse("invalid")
-  var id = intent.id
-  // Omniplug moves around the bar like anything else; it just cannot hold
-  // itself, be switched off from its own drawer, or be forgotten by it.
-  if (id === selfId && PLACEMENT_BAR_ZONES.indexOf(intent.to) < 0) return placementRefuse("self", id)
+  if (!placementIsObject(intent)) return placementRefuse("invalid")
+  var isOp = intent.op !== undefined
+  if (isOp ? PLACEMENT_OPS.indexOf(intent.op) < 0
+      : !placementValidId(intent.id) || PLACEMENT_TARGETS.indexOf(intent.to) < 0) return placementRefuse("invalid")
+  var id = isOp ? "" : intent.id
+  // Omniplug moves around the bar like anything else (its icon and its
+  // stacks alike); it just cannot go into a stack or be switched off there.
+  if (!isOp && id === selfId && PLACEMENT_BAR_ZONES.indexOf(intent.to) < 0) return placementRefuse("self", id)
 
   var read
   try { read = placementRead(config, selfId) }
   catch (error) { return placementRefuse(String(error.message) === "limits" ? "limits" : "unreadable", id) }
-  if (!read.own) return placementRefuse("unreadable", id)
-  var key = placementKeyOf(read)
+  var key = placementKeyOf(read, selfId)
   if (intent.key !== undefined && intent.key !== key) return placementRefuse("stale", id)
 
   var board = placementBoard(config, facts)
   if (!board) return placementRefuse("unreadable", id)
-  if (board.conflicts.indexOf(id) >= 0) return placementRefuse("conflict", id)
-
-  // Where the widget is now. A positional intent names the exact entry the
-  // user dragged; a by-id intent takes the widget's one placement.
-  var from = null
-  if (intent.from !== undefined) {
-    if (!placementIsObject(intent.from) || PLACEMENT_ZONES.indexOf(intent.from.zone) < 0)
-      return placementRefuse("invalid", id)
-    var zoneSlots = board.zones[intent.from.zone]
-    if (!placementIsIndex(intent.from.index, zoneSlots.length - 1)
-        || zoneSlots[intent.from.index].id !== id) return placementRefuse("stale", id)
-    from = { zone: intent.from.zone, index: intent.from.index }
-  } else if (board.byId[id]) {
-    if (board.duplicates.indexOf(id) >= 0 && intent.to !== "drawer") return placementRefuse("duplicate", id)
-    from = { zone: board.byId[id].zone, index: board.byId[id].index }
-  }
-
-  var to = intent.to
-  var fromBar = !!from && from.zone !== "drawer"
-  var fromDrawer = !!from && from.zone === "drawer"
-  var toBar = PLACEMENT_BAR_ZONES.indexOf(to) >= 0
-
-  if ((to === "off" || to === "remove") && !fromDrawer)
-    return placementRefuse(from ? "notStowed" : "notPlaced", id)
-  // Forgetting a stowed id also drops its carrier, which a partial read
-  // cannot see; leaving one behind is worse than waiting for the bar.
-  if (to === "remove" && facts && facts.partial) return placementRefuse("needsBarAccess", id)
-  if (toBar && !from) return placementRefuse("notPlaced", id)
+  var partial = !!(facts && facts.partial)
 
   var next = placementThaw({
     bar: { layout: read.layout },
     plugins: read.plugins,
     disabledPlugins: read.disabled
   })
-  var drawer = read.drawer.slice()
-  var destination = to === "drawer" ? drawer : toBar ? next.bar.layout[to] : null
-  if (intent.gap !== undefined && (!destination || !placementIsIndex(intent.gap, destination.length)))
-    return placementRefuse("invalid", id)
-
+  var stacks = placementThaw(read.stacks)
+  var dropLegacy = false
   var note = ""
   var cliIndex = -1
-  if (fromBar && toBar) {
-    var entries = next.bar.layout[from.zone]
-    var gap = intent.gap !== undefined ? intent.gap
-      : from.zone === to ? from.index : placementAnchorGap(next.bar.layout[to], to)
-    var target = gap - (from.zone === to && gap > from.index ? 1 : 0)
-    var moved = entries.splice(from.index, 1)[0]
-    next.bar.layout[to].splice(target, 0, moved)
-    cliIndex = target
-    note = from.zone === to ? "Moved within the " + to + " section." : "Moved to the " + to + " section."
-  } else if (fromBar && to === "drawer") {
-    var entry = read.layout[from.zone][from.index]
-    if (placementIsCustom(entry)) return placementRefuse("notStowable", id)
-    if (board.duplicates.indexOf(id) >= 0) return placementRefuse("duplicate", id)
-    if (facts && facts.plugins && facts.plugins[id] && !placementIsBarWidget(facts, id))
-      return placementRefuse("notStowable", id)
-    if (placementFirstParty(facts, id)) {
-      var builtins = 0
-      for (var s = 0; s < PLACEMENT_BAR_ZONES.length; s++) {
-        var section = read.layout[PLACEMENT_BAR_ZONES[s]]
-        for (var b = 0; b < section.length; b++) {
-          var other = placementEntryId(section[b])
-          if (other !== id && !placementIsCustom(section[b]) && placementFirstParty(facts, other)) builtins++
-        }
+  var from = null
+  var to = isOp ? "" : intent.to
+  var normalized = null
+
+  if (isOp) {
+    var op = intent.op
+    // The stack store is invisible to a partial read.
+    if (partial) return placementRefuse("needsBarAccess")
+    normalized = { op: op }
+    if (op === "newStack" || op === "migrateDrawer") {
+      var section = intent.section === undefined ? "right" : intent.section
+      if (PLACEMENT_BAR_ZONES.indexOf(section) < 0) return placementRefuse("invalid")
+      if (op === "migrateDrawer" && read.legacy.length === 0) return placementRefuse("noLegacy")
+      if (read.stackEntries.length >= PLACEMENT_MAX_STACKS) return placementRefuse("full")
+      var sid = placementNewSid(read)
+      if (!sid) return placementRefuse("full")
+      var def = { width: PLACEMENT_DEFAULT_WIDTH, dots: true, cards: [] }
+      if (op === "migrateDrawer") {
+        // A widget already on the bar or in a stack stays where it is: a
+        // conflict is never guessed about.
+        var moving = read.legacy.filter(function(member) { return !board.byId[member] && member !== selfId })
+        for (var m = 0; m < moving.length; m += PLACEMENT_MAX_CARD)
+          def.cards.push(moving.slice(m, m + PLACEMENT_MAX_CARD))
+        if (placementCountStacked(stacks) + moving.length > PLACEMENT_MAX_STACKED) return placementRefuse("full")
+        placementEachIcon(next, selfId, function(entry) { delete entry.drawer })
+        dropLegacy = true
+        note = "Moved the old drawer's widgets into a new stack."
+      } else {
+        note = "Added a stack to the " + section + " section. Move it in Arrange."
       }
-      if (builtins === 0) return placementRefuse("lastBuiltin", id)
+      next.bar.layout[section].push({ id: selfId, stack: sid })
+      stacks[sid] = def
+      normalized.section = section
+    } else if (op === "deleteStack" || op === "stackSettings") {
+      if (!placementValidSid(intent.stack)) return placementRefuse("invalid")
+      var target = placementFindStack(board, intent.stack)
+      if (!target) return placementRefuse("noStack")
+      normalized.stack = intent.stack
+      if (op === "stackSettings") {
+        if (!stacks[intent.stack]) stacks[intent.stack] = { width: target.width, dots: target.dots, cards: [] }
+        if (intent.width !== undefined) {
+          if (typeof intent.width !== "number" || !isFinite(intent.width)) return placementRefuse("invalid")
+          stacks[intent.stack].width = placementWidth(intent.width)
+          normalized.width = stacks[intent.stack].width
+        }
+        if (intent.dots !== undefined) {
+          if (typeof intent.dots !== "boolean") return placementRefuse("invalid")
+          stacks[intent.stack].dots = intent.dots
+          normalized.dots = intent.dots
+        }
+      } else {
+        // Its widgets go back to the bar where the stack was, in card order;
+        // an orphan's go to the end of the right section.
+        var where = target.zone || "right"
+        var at = target.zone ? target.index : next.bar.layout.right.length
+        if (target.zone) next.bar.layout[where].splice(at, 1)
+        var returning = []
+        for (var c = 0; c < target.cards.length; c++) {
+          for (var w = 0; w < target.cards[c].length; w++) {
+            var member = target.cards[c][w].id
+            var carried = placementCarrier(read, member)
+            var placed = { id: member }
+            var settings = carried ? placementEntrySettings(carried) : {}
+            for (var k in settings) placed[k] = settings[k]
+            returning.push(Object.keys(settings).length ? placed : member)
+            placementDropCarrier(next, member, placementOtherKinds(facts, member))
+            placementSetDisabled(next, member, false)
+          }
+        }
+        Array.prototype.splice.apply(next.bar.layout[where], [at, 0].concat(returning))
+        delete stacks[intent.stack]
+        note = returning.length ? "Deleted the stack and put its widgets back on the bar." : "Deleted the stack."
+      }
+    } else if (op === "selfSetting") {
+      if (typeof intent.name !== "string" || !/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(intent.name)
+          || ["id", "stack", "drawer", "stacks"].indexOf(intent.name) >= 0
+          || (typeof intent.value !== "boolean" && typeof intent.value !== "string" && typeof intent.value !== "number"))
+        return placementRefuse("invalid")
+      if (!read.own) return placementRefuse("unreadable")
+      placementEachIcon(next, selfId, function(entry) { entry[intent.name] = intent.value })
+      normalized.name = intent.name
+      normalized.value = intent.value
     }
-    next.bar.layout[from.zone].splice(from.index, 1)
-    placementUpsertCarrier(next, id, placementEntrySettings(entry))
-    placementSetDisabled(next, id, false)
-    drawer.splice(intent.gap !== undefined ? intent.gap : drawer.length, 0, id)
-    note = "Stowed " + placementName(facts, id) + " in the drawer."
-  } else if (fromDrawer && toBar) {
-    var carrier = placementCarrier(read, id)
-    var settings = carrier ? placementEntrySettings(carrier) : {}
-    var placed = { id: id }
-    for (var k in settings) placed[k] = settings[k]
-    var barGap = intent.gap !== undefined ? intent.gap : placementAnchorGap(next.bar.layout[to], to)
-    next.bar.layout[to].splice(barGap, 0, placed)
-    placementDropCarrier(next, id, placementOtherKinds(facts, id))
-    placementSetDisabled(next, id, false)
-    drawer.splice(from.index, 1)
-    note = "Put " + placementName(facts, id) + " back in the " + to + " section."
-  } else if (to === "drawer") {
-    if (!from) {
-      if (!placementIsBarWidget(facts, id)) return placementRefuse("notStowable", id)
-      drawer.splice(intent.gap !== undefined ? intent.gap : drawer.length, 0, id)
-      note = "Added " + placementName(facts, id) + " to the drawer."
-    } else {
-      // Already stowed: reorder, and turn it back on if it was off. A gap is
-      // counted before removal, like every other drop.
-      var drawerGap = intent.gap !== undefined ? intent.gap : from.index
-      var drawerTarget = drawerGap - (drawerGap > from.index ? 1 : 0)
-      drawer.splice(drawerTarget, 0, drawer.splice(from.index, 1)[0])
-      note = drawerTarget === from.index ? "" : "Moved within the drawer."
-    }
-    // Turning on: a third-party widget only loads with a carrier. A built-in
-    // loads regardless, so it gets none unless it already had one.
-    if ((!from || board.byId[id].state === "off") && !placementFirstParty(facts, id)
-        && placementFindCarrierIndex(next, id) < 0) next.plugins.push({ id: id })
-    placementSetDisabled(next, id, false)
-    if (from && board.byId[id].state === "off") note = "Turned " + placementName(facts, id) + " back on."
-  } else if (to === "off") {
-    placementSetDisabled(next, id, true)
-    note = "Turned " + placementName(facts, id) + " off. It keeps its place in the drawer."
-  } else if (to === "remove") {
-    drawer.splice(from.index, 1)
-    placementDropCarrier(next, id, placementOtherKinds(facts, id))
-    note = "Removed " + placementName(facts, id) + " from the drawer."
   } else {
-    return placementRefuse("invalid", id)
+    if (board.conflicts.indexOf(id) >= 0) return placementRefuse("conflict", id)
+
+    // Where the widget is now. A positional intent names the exact entry the
+    // user dragged; a by-id intent takes the widget's one placement.
+    if (intent.from !== undefined) {
+      if (!placementIsObject(intent.from)) return placementRefuse("invalid", id)
+      var fz = intent.from.zone
+      var fromSlot = null
+      if (PLACEMENT_BAR_ZONES.indexOf(fz) >= 0) {
+        if (!placementIsIndex(intent.from.index, board.zones[fz].length - 1)) return placementRefuse("stale", id)
+        fromSlot = board.zones[fz][intent.from.index]
+      } else if (fz === "stack") {
+        var fromStack = placementValidSid(intent.from.stack) ? placementFindStack(board, intent.from.stack) : null
+        if (!fromStack) return placementRefuse("stale", id)
+        if (!placementIsIndex(intent.from.card, fromStack.cards.length - 1)) return placementRefuse("stale", id)
+        var fromCard = fromStack.cards[intent.from.card]
+        if (!placementIsIndex(intent.from.index, fromCard.length - 1)) return placementRefuse("stale", id)
+        fromSlot = fromCard[intent.from.index]
+      } else return placementRefuse("invalid", id)
+      if (fromSlot.id !== id) return placementRefuse("stale", id)
+      from = fz === "stack"
+        ? { zone: "stack", stack: intent.from.stack, card: intent.from.card, index: intent.from.index }
+        : { zone: fz, index: intent.from.index }
+    } else if (board.byId[id]) {
+      var known = board.byId[id]
+      if (known.zone !== "stack" && board.duplicates.indexOf(id) >= 0) return placementRefuse("duplicate", id)
+      from = known.zone === "stack"
+        ? { zone: "stack", stack: known.stack, card: known.card, index: known.index }
+        : { zone: known.zone, index: known.index }
+    }
+
+    var fromBar = !!from && from.zone !== "stack"
+    var fromStacked = !!from && from.zone === "stack"
+    var toBar = PLACEMENT_BAR_ZONES.indexOf(to) >= 0
+    // A stack's own bar entry moves around the bar, never into a stack.
+    if (fromBar && to === "stack" && board.zones[from.zone][from.index].stack) return placementRefuse("self", id)
+
+    if ((to === "off" || to === "on" || to === "remove") && !fromStacked)
+      return placementRefuse(from ? "notStowed" : "notPlaced", id)
+    if (toBar && !from) return placementRefuse("notPlaced", id)
+    // Anything that changes a stack reads and writes the stack store, which a
+    // partial read cannot see.
+    if (partial && (to === "stack" || fromStacked)) return placementRefuse("needsBarAccess", id)
+
+    // The card a "stack" intent lands in, and where.
+    var destCard = null
+    var destStack = null
+    if (to === "stack") {
+      if (!placementValidSid(intent.stack)) return placementRefuse("invalid", id)
+      var onBar = null
+      for (var b = 0; b < board.stacks.length; b++) if (board.stacks[b].sid === intent.stack) onBar = board.stacks[b]
+      if (!onBar) return placementRefuse("noStack", id)
+      if (!stacks[intent.stack]) stacks[intent.stack] = { width: onBar.width, dots: onBar.dots, cards: [] }
+      destStack = stacks[intent.stack]
+      if (!placementIsIndex(intent.card, destStack.cards.length)) return placementRefuse("invalid", id)
+      var newCard = intent.card === destStack.cards.length
+      if (newCard && destStack.cards.length >= PLACEMENT_MAX_CARDS) return placementRefuse("full", id)
+      var length = newCard ? 0 : destStack.cards[intent.card].length
+      if (intent.gap !== undefined && !placementIsIndex(intent.gap, length)) return placementRefuse("invalid", id)
+      var sameCard = fromStacked && from.stack === intent.stack && from.card === intent.card
+      if (!sameCard && length >= PLACEMENT_MAX_CARD) return placementRefuse("full", id)
+      if (!fromStacked && placementCountStacked(stacks) >= PLACEMENT_MAX_STACKED) return placementRefuse("full", id)
+      destCard = { card: intent.card, gap: intent.gap !== undefined ? intent.gap : length, newCard: newCard }
+    } else if (toBar && intent.gap !== undefined && !placementIsIndex(intent.gap, next.bar.layout[to].length)) {
+      return placementRefuse("invalid", id)
+    }
+
+    // Take the widget out of its card, leaving the (possibly empty) card in
+    // place so the destination's indices still hold; empty cards go when the
+    // store is written.
+    function takeFromCard() {
+      stacks[from.stack].cards[from.card].splice(from.index, 1)
+    }
+
+    if (fromBar && toBar) {
+      var entries = next.bar.layout[from.zone]
+      var gap = intent.gap !== undefined ? intent.gap
+        : from.zone === to ? from.index : placementAnchorGap(next.bar.layout[to], to)
+      var landing = gap - (from.zone === to && gap > from.index ? 1 : 0)
+      var moved = entries.splice(from.index, 1)[0]
+      next.bar.layout[to].splice(landing, 0, moved)
+      cliIndex = landing
+      note = from.zone === to ? "Moved within the " + to + " section." : "Moved to the " + to + " section."
+    } else if (to === "stack" && !fromStacked) {
+      if (fromBar) {
+        var entry = read.layout[from.zone][from.index]
+        var refusal = placementStowRefusal(read, board, facts, id, entry)
+        if (refusal) return placementRefuse(refusal, id)
+        next.bar.layout[from.zone].splice(from.index, 1)
+        placementUpsertCarrier(next, id, placementEntrySettings(entry))
+      } else {
+        if (!placementIsBarWidget(facts, id)) return placementRefuse("notStowable", id)
+        // A built-in loads without a carrier; a third-party widget needs one.
+        if (!placementFirstParty(facts, id) && placementFindCarrierIndex(next, id) < 0) next.plugins.push({ id: id })
+      }
+      placementSetDisabled(next, id, false)
+      if (destCard.newCard) destStack.cards.push([id])
+      else destStack.cards[destCard.card].splice(destCard.gap, 0, id)
+      note = "Put " + placementName(facts, id) + " in a stack."
+    } else if (to === "stack") {
+      var sameCardMove = from.stack === intent.stack && from.card === intent.card
+      var cardGap = destCard.gap - (sameCardMove && destCard.gap > from.index ? 1 : 0)
+      takeFromCard()
+      if (destCard.newCard) destStack.cards.push([id])
+      else destStack.cards[destCard.card].splice(cardGap, 0, id)
+      note = sameCardMove ? "Moved within the card." : "Moved to another card."
+    } else if (fromStacked && toBar) {
+      var carrier = placementCarrier(read, id)
+      var carriedSettings = carrier ? placementEntrySettings(carrier) : {}
+      var restored = { id: id }
+      for (var key2 in carriedSettings) restored[key2] = carriedSettings[key2]
+      var barGap = intent.gap !== undefined ? intent.gap : placementAnchorGap(next.bar.layout[to], to)
+      next.bar.layout[to].splice(barGap, 0, Object.keys(carriedSettings).length ? restored : id)
+      placementDropCarrier(next, id, placementOtherKinds(facts, id))
+      placementSetDisabled(next, id, false)
+      takeFromCard()
+      note = "Put " + placementName(facts, id) + " back in the " + to + " section."
+    } else if (to === "off") {
+      placementSetDisabled(next, id, true)
+      note = "Turned " + placementName(facts, id) + " off. It keeps its place in the stack."
+    } else if (to === "on") {
+      // A third-party widget only loads with a carrier. A built-in loads
+      // regardless, so it gets none unless it already had one.
+      if (!placementFirstParty(facts, id) && placementFindCarrierIndex(next, id) < 0) next.plugins.push({ id: id })
+      placementSetDisabled(next, id, false)
+      note = "Turned " + placementName(facts, id) + " back on."
+    } else if (to === "remove") {
+      takeFromCard()
+      placementDropCarrier(next, id, placementOtherKinds(facts, id))
+      note = "Removed " + placementName(facts, id) + " from its stack."
+    } else {
+      return placementRefuse("invalid", id)
+    }
+    normalized = { id: id, to: to, gap: intent.gap === undefined ? null : intent.gap, from: from,
+      stack: to === "stack" ? intent.stack : null, card: to === "stack" ? intent.card : null }
   }
 
-  if (!placementWriteOwn(next, selfId, drawer)) return placementRefuse("unreadable", id)
+  if (!partial) placementWriteStore(next, selfId, stacks, dropLegacy)
   // Leave absent lists absent: a write should not add keys nobody asked for.
   if (config.plugins === undefined && next.plugins.length === 0) delete next.plugins
   if (config.disabledPlugins === undefined && next.disabledPlugins.length === 0) delete next.disabledPlugins
 
   var after
   try { after = placementRead(next, selfId) } catch (error) { return placementRefuse("limits", id) }
-  var before = placementRegions(read, selfId)
-  var changed = placementRegions(after, selfId)
+  var before = placementRegions(read)
+  var changed = placementRegions(after)
   var touched = []
   for (var region in before) if (before[region] !== changed[region]) touched.push(region)
   var noOp = touched.length === 0
 
-  // Whether a stowed widget runs is decided by plugins[] and disabledPlugins,
+  // Whether a stacked widget runs is decided by plugins[] and disabledPlugins,
   // and changing those needs the plugin list (kinds, first-party) to be right.
-  if (!noOp && !(facts && facts.plugins)
-      && (touched.indexOf("plugins") >= 0 || touched.indexOf("disabled") >= 0))
-    return placementRefuse("unreadable", id)
+  // Our own stack store is in plugins[] too, but needs no facts.
+  var factsNeeded = touched.indexOf("disabled") >= 0
+    || (touched.indexOf("plugins") >= 0 && !(isOp && (intent.op === "stackSettings" || intent.op === "newStack")))
+  if (!noOp && !(facts && facts.plugins) && factsNeeded) return placementRefuse("unreadable", id)
 
-  // Least privilege: a change to our own object entry alone goes through the
-  // public updateEntryInline; everything else needs the in-process writer; a
-  // plain bar move can still use omarchy-bar when that writer is out of reach.
+  // The in-process writer for everything; a plain bar move can still use
+  // omarchy-bar when that writer is out of reach.
   var channel = ""
   var command = []
   if (noOp) channel = ""
-  else if (touched.length === 1 && touched[0] === "own" && placementIsObject(read.own.entry)) channel = "own"
-  else if (facts && facts.canCross) channel = "config"
-  else if (touched.length === 1 && touched[0] === "layout" && fromBar && toBar) {
+  else if (facts && facts.canCross && !partial) channel = "config"
+  else if (!isOp && touched.length === 1 && touched[0] === "layout" && from && from.zone !== "stack"
+      && PLACEMENT_BAR_ZONES.indexOf(to) >= 0) {
     if (!placementTransportable(id)) return placementRefuse("untransportable", id)
     channel = "cli"
     command = ["omarchy-bar", "move", id, "--from-section", from.zone, "--from-index", String(from.index),
       "--section", to, "--index", String(cliIndex)]
   } else return placementRefuse("needsBarAccess", id)
 
-  var ownEntry = placementOwnEntryOf(next, selfId)
   return Object.freeze({
     ok: true, reason: "", note: noOp ? "" : note, id: id, noOp: noOp, channel: channel,
     touched: Object.freeze(touched),
-    intent: placementCopy({ id: id, to: to, gap: intent.gap === undefined ? null : intent.gap,
-      from: intent.from === undefined ? null : from }),
+    intent: placementCopy(normalized),
     baseKey: key,
     next: placementCopy(next, true),
-    ownSettings: ownEntry ? placementCopy(placementEntrySettings(ownEntry)) : null,
     command: Object.freeze(command),
-    expectedKey: placementKeyOf(after),
+    expectedKey: placementKeyOf(after, selfId),
     expectedLayout: JSON.stringify(after.layout)
   })
-}
-
-function placementStripOwn(layout, selfId) {
-  var result = {}
-  for (var s = 0; s < PLACEMENT_BAR_ZONES.length; s++) {
-    result[PLACEMENT_BAR_ZONES[s]] = layout[PLACEMENT_BAR_ZONES[s]].map(function(entry) {
-      return placementEntryId(entry) === selfId ? selfId : entry
-    })
-  }
-  return result
-}
-
-function placementOwnEntryOf(config, selfId) {
-  for (var s = 0; s < PLACEMENT_BAR_ZONES.length; s++) {
-    var entries = config.bar.layout[PLACEMENT_BAR_ZONES[s]]
-    for (var i = 0; i < entries.length; i++) {
-      if (placementEntryId(entries[i]) === selfId) return placementIsObject(entries[i]) ? entries[i] : { id: selfId }
-    }
-  }
-  var plugins = config.plugins || []
-  for (var p = 0; p < plugins.length; p++) {
-    if (placementIsObject(plugins[p]) && String(plugins[p].id) === selfId) return plugins[p]
-  }
-  return null
 }
 
 // For the in-process writer's mutator: plan the same intent again against the
@@ -615,9 +859,12 @@ function placementOwnEntryOf(config, selfId) {
 // the ids and positions the plan was made from. Returns the fresh plan.
 function placementAssign(copy, plan, facts) {
   if (!plan || !plan.ok || !plan.intent) throw new Error("stale")
-  var intent = { id: plan.intent.id, to: plan.intent.to, key: plan.baseKey }
-  if (plan.intent.gap !== null) intent.gap = plan.intent.gap
-  if (plan.intent.from !== null) intent.from = { zone: plan.intent.from.zone, index: plan.intent.from.index }
+  var intent = { key: plan.baseKey }
+  for (var field in plan.intent) {
+    var value = plan.intent[field]
+    if (value === null) continue
+    intent[field] = value && typeof value === "object" ? placementThaw(value) : value
+  }
   var fresh = placementPlan(copy, facts, intent)
   if (!fresh.ok) throw new Error(fresh.reason === "stale" ? "stale" : "refused: " + fresh.reason)
   if (fresh.expectedKey !== plan.expectedKey) throw new Error("stale")
@@ -629,8 +876,6 @@ function placementAssign(copy, plan, facts) {
   else delete copy.disabledPlugins
   return fresh
 }
-
-// ---- Arrange -----------------------------------------------------------
 
 // The plugin list's rows, as the facts Placement needs.
 function placementFactsFromRows(rows) {
@@ -644,44 +889,8 @@ function placementFactsFromRows(rows) {
   return facts
 }
 
-// What Arrange draws: the bar snapshot it already knows (Model.barLayoutSnapshot)
-// plus the Drawer as a fourth column of {id, state}. Without a board there is
-// no Drawer column. Both keys go into the board key, so a drag started on
-// either an old bar or an old drawer is dropped as stale by the board.
-function placementArrangeSnapshot(barSnapshot, board) {
-  if (!barSnapshot) return null
-  if (!board) return barSnapshot
-  var drawer = board.zones.drawer.map(function(slot) {
-    return Object.freeze({ id: slot.id, state: slot.state })
-  })
-  return Object.freeze({
-    key: barSnapshot.key + "|" + board.key,
-    layout: Object.freeze({
-      left: barSnapshot.layout.left, center: barSnapshot.layout.center, right: barSnapshot.layout.right,
-      drawer: Object.freeze(drawer)
-    }),
-    rows: barSnapshot.rows,
-    bar: barSnapshot,
-    placementKey: board.key
-  })
-}
-
-// A drop on the Arrange board, as either nothing for Placement (null: a move
-// between bar sections keeps the store's omarchy-bar path, given
-// `snapshot.bar`) or an intent for Placement's owner.
-function placementIntentFor(snapshot, fromSection, fromIndex, toSection, gap) {
-  if (!snapshot || !snapshot.placementKey) return null
-  if (fromSection !== "drawer" && toSection !== "drawer") return null
-  var entries = snapshot.layout[fromSection]
-  var entry = entries ? entries[fromIndex] : undefined
-  var id = placementEntryId(entry)
-  if (!id) return null
-  return { id: id, to: toSection, gap: gap, from: { zone: fromSection, index: fromIndex }, key: snapshot.placementKey }
-}
-
-function placementRemovalFor(snapshot, section, index) {
-  if (!snapshot || !snapshot.placementKey || section !== "drawer") return null
-  var entry = snapshot.layout.drawer[index]
-  if (!entry || !entry.id) return null
-  return { id: entry.id, to: "remove", from: { zone: "drawer", index: index }, key: snapshot.placementKey }
+// A stack's label wherever it is listed: "Stack 2" for sid "s2".
+function placementStackLabel(sid) {
+  var match = /^s([0-9]+)$/.exec(String(sid || ""))
+  return match ? "Stack " + match[1] : "Stack " + String(sid || "")
 }

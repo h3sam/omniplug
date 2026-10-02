@@ -217,12 +217,11 @@ Item {
   property string pendingPlacement: ""
 
   // Omniplug's Placement owner (PlacementOwner.qml), which writes every
-  // Drawer change; null until the surface has one. See docs/design/m1-drawer.md.
+  // stack change; null until the surface has one. See docs/design/m2-stacks.md.
   property var placement: null
-  readonly property bool canStowInDrawer: !!placement && !!placement.board && placement.board.canStow === true
 
   readonly property var placementChoices: pendingKind === "move"
-    ? Model.moveOptions(pendingSection) : Model.placementOptions(canStowInDrawer && !pendingPlacementNeeded)
+    ? Model.moveOptions(pendingSection) : Model.placementOptions()
   readonly property string placementMessage: pendingKind === "move"
     ? "Move " + pendingLabel + " to which section of the bar?"
     : "Where in the bar should " + pendingLabel + " go?"
@@ -700,7 +699,7 @@ Item {
 
   // Enabling is not destructive and needs no "are you sure" — but a bar widget
   // has to be told where it goes, and only the user knows that.
-  // A stowed widget turns back on where it was, through Placement.
+  // A stacked widget turns off and back on in its card, through Placement.
   function placeStowed(row, to) {
     if (!placement || busy) return false
     var ticket = placement.request({ id: String(row.id), to: to })
@@ -710,7 +709,7 @@ Item {
 
   function askEnable(row) {
     if (!Model.canEnable(row) || busy) return false
-    if (row.stowed === true) return placeStowed(row, "drawer")
+    if (row.stowed === true) return placeStowed(row, "on")
 
     if (!Model.needsPlacement(row)) {
       // A service, an overlay, or a whole-bar plugin: nothing to place, so the
@@ -731,7 +730,7 @@ Item {
   // one exception: the surface's own row, whose Enable button leaves with it.
   function askDisable(row) {
     if (!Model.canDisable(row) || busy) return false
-    // Off, but Omniplug remembers its drawer spot for when it comes back on.
+    // Off, but Omniplug remembers its card spot for when it comes back on.
     if (row.stowed === true) return placeStowed(row, "off")
 
     if (row.id === selfId) {
@@ -800,10 +799,6 @@ Item {
       // that is no longer there would either fail or, worse, hit whatever now
       // carries that id.
       setStatus("Could not enable " + label + ": it is no longer in the list", true)
-      return
-    }
-    if (section === "drawer") {
-      placeStowed(row, "drawer")
       return
     }
     startEnable(row, section)
