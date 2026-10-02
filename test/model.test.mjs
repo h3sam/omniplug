@@ -4095,7 +4095,7 @@ test("bar update dot projects the panel's confirmed count without changing butto
 
   assert.match(barWidget,
     /readonly property int updateCount: panelLoader\.item \? panelLoader\.item\.behindCount : 0/)
-  assert.match(barWidget, /visible: root\.updateCount > 0/)
+  assert.match(barWidget, /visible: root\.isIcon && root\.updateCount > 0/)
   assert.match(barWidget,
     /anchors\.right: button\.right\s+anchors\.rightMargin: Style\.space\(3\)\s+anchors\.top: button\.top\s+anchors\.topMargin: Style\.space\(5\)/)
   assert.match(barWidget,
@@ -5080,7 +5080,8 @@ test("PopupBridge hands the expanded window back to the popup on its own output"
   const barWidget = readFileSync(new URL("../BarWidget.qml", import.meta.url), "utf8")
   assert.match(barWidget, /import "PopupBridge\.js" as PopupBridge/)
   assert.match(barWidget, /readonly property string screenName: root\.QsWindow\.window && root\.QsWindow\.window\.screen/)
-  assert.match(barWidget, /Component\.onCompleted: PopupBridge\.register\(root\)/)
+  // Only the icon registers: a stack is no popup and has no manager.
+  assert.match(barWidget, /onIsIconChanged: if \(root\.isIcon\) PopupBridge\.register\(root\)/)
   assert.match(barWidget, /Component\.onDestruction: PopupBridge\.unregister\(root\)/)
 })
 
@@ -5378,7 +5379,7 @@ test("the expanded window's settings face owns the one switch and reads back thr
   // carry all survive, since the host replaces the entry outright.
   const saves = [], statuses = []
   const loaded = { position: "right", pinned: ["a", "b"], nested: { k: 1 }, big: "y".repeat(300), allowUnverifiedUpdates: true }
-  const state = { busy: false, selfEntry: loaded, selfEntryLoaded: true,
+  const state = { busy: false, placement: null, selfEntry: loaded, selfEntryLoaded: true,
     selfSettings: { position: "right", allowUnverifiedUpdates: true }, selfId: "acme.plugin",
     shell: { updateEntryInline: (id, settings) => { saves.push([id, settings]); return true } },
     allowUnverifiedUpdates: true, setStatus(text, error) { statuses.push([text, error]) } }

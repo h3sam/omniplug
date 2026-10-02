@@ -164,7 +164,17 @@ Item {
       return false
     }
     var next = Model.withSelfSetting(selfEntry, key, want)
-    if (shell.updateEntryInline(selfId, next) !== true) {
+    // updateEntryInline rewrites every entry with our id, and a stack is one
+    // of those: once there are stacks, only the in-process writer can change
+    // the icon's settings alone (docs/design/m2-stacks.md).
+    var stacked = !!placement && !!placement.board && placement.board.stacks.length > 0
+    if (stacked) {
+      var ticket = placement.request({ op: "selfSetting", name: key, value: want })
+      if (!ticket.ok) {
+        setStatus(ticket.note || "Could not save the setting", true)
+        return false
+      }
+    } else if (shell.updateEntryInline(selfId, next) !== true) {
       setStatus("Could not save the setting", true)
       return false
     }

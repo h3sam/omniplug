@@ -149,3 +149,54 @@ function hostingPopoutVerdict(facts) {
   if (f.active === f.owner || f.ownsActive) return "keep"
   return "dismiss"
 }
+
+// ---- Stacks (docs/design/m2-stacks.md) ----------------------------------
+
+// What a stack shows on the bar: its cards with switched-off widgets left
+// out, and cards that end up empty dropped. Missing widgets stay, so their
+// placeholder says what is wrong. Slots come from Placement's board.
+function hostingStackCards(stack) {
+  var cards = stack && Array.isArray(stack.cards) ? stack.cards : []
+  var out = []
+  for (var c = 0; c < cards.length; c++) {
+    var shown = (cards[c] || []).filter(function(slot) { return !!slot && slot.state !== "off" })
+    if (shown.length > 0) out.push(shown)
+  }
+  return out
+}
+
+// Every slot in every card, in order: what the stack's HostStage hosts.
+// Off widgets are passed too; the stage keeps them as unloaded placeholders.
+function hostingStackEntries(stack) {
+  var cards = stack && Array.isArray(stack.cards) ? stack.cards : []
+  var out = []
+  for (var c = 0; c < cards.length; c++) for (var i = 0; i < (cards[c] || []).length; i++) out.push(cards[c][i])
+  return out
+}
+
+// The card index after flipping `step` cards from `index`, wrapping around.
+function hostingWrap(index, step, count) {
+  if (!(count > 0)) return 0
+  var value = (Math.floor(index) || 0) + (Math.floor(step) || 0)
+  return ((value % count) + count) % count
+}
+
+// Wheel deltas, accumulated until a whole notch: one card per notch, or per
+// 120 units of pixel delta on a touchpad. Returns { step, rest }.
+function hostingWheelStep(accumulated, delta) {
+  var total = (accumulated || 0) + (delta || 0)
+  var notches = total > 0 ? Math.floor(total / 120) : Math.ceil(total / 120)
+  // Wheel up (positive) goes back a card, down goes forward, like a list.
+  return { step: -notches, rest: total - notches * 120 }
+}
+
+// The stack's extent along the bar: its fixed width at rest, the showing
+// card's natural width while it fans out (only ever wider), and a small
+// marker when there is nothing to show.
+function hostingStackExtent(facts) {
+  var f = facts || {}
+  if (!f.hasCards) return Math.max(0, f.emptyExtent || 0)
+  var fixed = Math.max(0, f.fixed || 0)
+  var natural = Math.max(0, f.natural || 0)
+  return f.fanned && natural > fixed ? natural : fixed
+}

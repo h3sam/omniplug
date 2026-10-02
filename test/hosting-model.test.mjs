@@ -7,7 +7,8 @@ import assert from "node:assert/strict"
 const source = readFileSync(new URL("../HostingModel.js", import.meta.url), "utf8")
 const H = Function(source + `; return { hostingIsHostBar, hostingCanWrite, hostingFindHostBar,
   hostingIsDescendant, hostingTiles, hostingSettings, hostingSettingsKey, hostingTileState,
-  hostingReasonText, hostingPopoutVerdict, HOSTING_MAX_ENTRIES }`)()
+  hostingReasonText, hostingPopoutVerdict, HOSTING_MAX_ENTRIES, hostingStackCards, hostingStackEntries,
+  hostingWrap, hostingWheelStep, hostingStackExtent }`)()
 
 const barRoot = (over = {}) => ({
   pluginBarApiFor() {}, requestPopout() {}, registerModuleSlot() {}, barWidgetRegistry: {}, ...over
@@ -101,4 +102,32 @@ test("popout verdicts keep the drawer for its own children and dismiss it for an
   assert.equal(H.hostingPopoutVerdict({ shown: true, active: child, owner, ownsActive: true }), "keep")
   assert.equal(H.hostingPopoutVerdict({ shown: true, active: null, owner }), "reclaim")
   assert.equal(H.hostingPopoutVerdict({ shown: true, active: stranger, owner, ownsActive: false }), "dismiss")
+})
+
+test("a stack shows its cards without switched-off widgets, and hosts every slot", () => {
+  const stack = { cards: [[{ id: "a", state: "live" }, { id: "b", state: "off" }], [{ id: "c", state: "off" }],
+    [{ id: "d", state: "missing" }]] }
+  assert.deepEqual(H.hostingStackCards(stack).map(card => card.map(s => s.id)), [["a"], ["d"]])
+  assert.deepEqual(H.hostingStackEntries(stack).map(s => s.id), ["a", "b", "c", "d"])
+  assert.deepEqual(H.hostingStackCards(null), [])
+  assert.deepEqual(H.hostingStackEntries({}), [])
+})
+
+test("flipping wraps around both ends, one card per wheel notch", () => {
+  assert.equal(H.hostingWrap(2, 1, 3), 0)
+  assert.equal(H.hostingWrap(0, -1, 3), 2)
+  assert.equal(H.hostingWrap(5, 0, 3), 2, "a remembered index past the end is brought back in")
+  assert.equal(H.hostingWrap(0, 1, 0), 0)
+  assert.deepEqual(H.hostingWheelStep(0, -120), { step: 1, rest: 0 }, "down goes forward")
+  assert.deepEqual(H.hostingWheelStep(0, 240), { step: -2, rest: 0 })
+  assert.deepEqual(H.hostingWheelStep(0, -40), { step: 0, rest: -40 }, "a touchpad accumulates")
+  assert.deepEqual(H.hostingWheelStep(-100, -40), { step: 1, rest: -20 })
+})
+
+test("a stack keeps its fixed width and only fans out wider, while hovered", () => {
+  const base = { hasCards: true, fixed: 160, natural: 300, emptyExtent: 20 }
+  assert.equal(H.hostingStackExtent(base), 160)
+  assert.equal(H.hostingStackExtent({ ...base, fanned: true }), 300)
+  assert.equal(H.hostingStackExtent({ ...base, fanned: true, natural: 100 }), 160, "a narrow card never shrinks it")
+  assert.equal(H.hostingStackExtent({ ...base, hasCards: false }), 20)
 })

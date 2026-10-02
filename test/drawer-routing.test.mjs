@@ -15,7 +15,7 @@ function call(source, name, state, ...args) {
 }
 
 // A BarWidget whose functions call each other through the shipped bodies.
-function widgetState({ deferred = false } = {}) {
+function widgetState() {
   const log = []
   const panel = {
     opened: false, fromDrawer: false,
@@ -30,7 +30,7 @@ function widgetState({ deferred = false } = {}) {
       requestPopout(owner) { log.push("request:" + (owner === state ? "widget" : "other")) },
       releasePopout(owner) { log.push("release:" + (owner === state ? "widget" : "other")) }
     },
-    stage: { deferPopoutSwitch() { log.push("defer?"); return deferred } },
+    drawerTicket: null, isIcon: true, noteAfter: -1, placementOwner: null,
     cancelPopupArrange() { log.push("cancel") }
   }
   state.root = state
@@ -74,22 +74,15 @@ test("Manage swaps the drawer for the manager, marked as coming from the drawer;
   assert.match(panelSource, /onClicked: if \(root\.hostWidget && typeof root\.hostWidget\.openDrawer === "function"\) root\.hostWidget\.openDrawer\(\)/)
 })
 
-test("a popout switch is deferred to the stage while the drawer shows, and closes everything otherwise", () => {
-  const deferred = widgetState({ deferred: true })
-  deferred.state.openDrawer()
-  deferred.log.length = 0
-  deferred.state.closeForPopoutSwitch()
-  assert.equal(deferred.state.drawerOpen, true, "a stowed widget's panel may be the new popout")
-  assert.deepEqual(deferred.log, ["defer?"])
-
-  const plain = widgetState({ deferred: false })
+test("a popout switch closes the drawer and the manager: the drawer hosts no widgets any more", () => {
+  const plain = widgetState()
   plain.state.openDrawer()
   plain.panel.opened = true
   plain.log.length = 0
   plain.state.closeForPopoutSwitch()
   assert.equal(plain.state.drawerOpen, false)
   assert.equal(plain.panel.opened, false)
-  assert.deepEqual(plain.log, ["defer?", "cancel", "release:widget", "panel.switchClose"])
+  assert.deepEqual(plain.log, ["cancel", "release:widget", "panel.switchClose"])
 })
 
 test("summon opens the drawer; close closes whichever is open", () => {

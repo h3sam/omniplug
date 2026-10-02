@@ -111,7 +111,8 @@ function continueArrange(owner) {
   continuation = null
   var opened = false
   if (chosen) {
-    if (route.origin) opened = typeof chosen.openPlacementView === "function"
+    if (route.view === "drawer") opened = typeof chosen.openDrawer === "function" && chosen.openDrawer(true) === true
+    else if (route.origin) opened = typeof chosen.openPlacementView === "function"
       && chosen.openPlacementView(route.origin, route.attempts >= 30) === true
     else opened = typeof chosen.openArrange === "function" && chosen.openArrange() === true
   }
@@ -120,16 +121,18 @@ function continueArrange(owner) {
   else owner.continuationActive = false
 }
 
-// A Drawer change from the popup's Arrange board. The owner writes it at once;
-// a change to the bar layout then rebuilds every bar widget, this popup
-// included, so Arrange is reopened on the rebuilt widget for that output.
-function requestPlacement(widget, intent) {
+// A stack change from the Drawer (view "drawer") or a popup. The owner writes
+// it at once; a change to the bar layout then rebuilds every bar widget, this
+// one included, so the view it came from is reopened on the rebuilt widget for
+// that output: the Drawer, or else Arrange.
+function requestPlacement(widget, intent, view) {
   if (!moveOwner || widgets.indexOf(widget) < 0 || moveOwner.busy || typeof moveOwner.place !== "function") return null
   var screen = String(widget.screenName || "")
   var before = serial
   var ticket = moveOwner.place(intent)
   if (ticket && ticket.ok && !ticket.noOp && ticket.touched && ticket.touched.indexOf("layout") >= 0) {
-    continuation = { screen: screen, generation: moveOwner.generation, attempts: 0, origin: null, after: before }
+    continuation = { screen: screen, generation: moveOwner.generation, attempts: 0, origin: null, after: before,
+      view: view === "drawer" ? "drawer" : "" }
     moveOwner.continuationActive = true
   }
   return ticket || null

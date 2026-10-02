@@ -123,6 +123,18 @@ Item {
 
   onConfigChanged: owner.verify()
 
+  // Widgets stowed with M1 become one stack (docs/design/m2-stacks.md,
+  // decision 8), as soon as Placement can write. Tried once per run: like
+  // every intent, never retried behind the user's back.
+  property bool migrationTried: false
+  function migrate() {
+    var board = owner.board
+    if (owner.migrationTried || owner.busy || !board || !board.canStow || board.legacyDrawer.length === 0) return
+    owner.migrationTried = true
+    owner.request({ op: "migrateDrawer" })
+  }
+  onBoardChanged: Qt.callLater(owner.migrate)
+
   // Never retried: after this the user sees the board as it is and decides.
   Timer {
     interval: owner.confirmInterval

@@ -216,6 +216,19 @@ PopupBridge.
   switched off, and its switch sends `off`/`on`. The place dialog loses its
   **Drawer** choice.
 
+## Known gaps
+
+- **Dragging a stack on the bar itself.** The bar's own drag-to-reorder moves
+  an entry by name (`Bar.dropBarModule` → `moveModuleInConfig`), and every
+  stack and the icon share Omniplug's id. Dragging one of them on the bar can
+  move the first Omniplug entry in that section instead. Arrange moves entries
+  by position, so it is the way to move stacks.
+- **Summons.** The shell routes `omarchy-shell shell toggle <omniplug>` to
+  one Omniplug entry; when that is a stack, nothing opens. The expanded
+  panel's hotkey is unaffected.
+- **The Drawer's strip only takes widgets back from stacks.** Reordering the
+  bar stays Arrange's job.
+
 ## Build order
 
 Each step is one commit.
