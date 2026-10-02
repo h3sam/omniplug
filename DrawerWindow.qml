@@ -106,11 +106,13 @@ PanelWindow {
   // slot it landed in, counted before the source is removed.
   function drop(source, target, gap) {
     if (!source || !target || !drawer.board) return
-    if (target.kind === "none") return
     // A widget placed nowhere is moved by id; everything else by position.
     var intent = { id: source.id, key: drawer.board.key }
     if (source.from.zone !== "none") intent.from = source.from
-    if (target.kind === "bar") {
+    if (target.kind === "none") {
+      if (source.from.zone === "none") return
+      intent.to = "none"
+    } else if (target.kind === "bar") {
       if (source.from.zone === "left" || source.from.zone === "center" || source.from.zone === "right")
         return // reordering the bar is Arrange's job
       intent.to = target.zone
@@ -272,8 +274,7 @@ PanelWindow {
     property alias chips: chipRepeater.model
     property var fromFor: function(index) { return null }
     property string emptyText: ""
-    readonly property bool hot: !!drawer.held && drawer.hoverTarget === row && !!row.dropInfo
-      && row.dropInfo.kind !== "none"
+    readonly property bool hot: !!drawer.held && drawer.hoverTarget === row
 
     width: parent ? parent.width : 0
     implicitHeight: Math.max(flow.implicitHeight, emptyLabel.implicitHeight) + Style.space(10)
@@ -457,11 +458,12 @@ PanelWindow {
             }
 
             // Bar widgets placed nowhere, off or simply not added: drag one
-            // onto the bar or into a card.
+            // onto the bar or into a card, or drop one here to take it off
+            // the bar or out of its stack.
             Column {
               width: sections.width
               spacing: Style.space(3)
-              visible: !!drawer.board && drawer.board.unplaced.length > 0
+              visible: !!drawer.board
               Caption {
                 text: "NOT ON THE BAR"
                 font.bold: true
@@ -469,6 +471,7 @@ PanelWindow {
               DropRow {
                 dropInfo: ({ kind: "none" })
                 chips: drawer.board ? drawer.board.unplaced : []
+                emptyText: "Drop a widget here to take it off the bar"
                 fromFor: function(index) { return { zone: "none" } }
               }
             }
@@ -618,7 +621,7 @@ PanelWindow {
             if (drawer.board.reason === "unreadable") return "Loading the plugin list…"
             if (drawer.board.reason === "needsBarAccess") return Placement.PLACEMENT_NOTES.needsBarAccess
             if (drawer.board.stacks.length === 0) return "Make a stack, then drag widgets into it."
-            return "Drag widgets into the cards, between them, or back onto the bar. Scroll over a stack on the bar to flip its cards."
+            return "Drag widgets between the bar, the cards and Not on the bar. Scroll over a stack on the bar to flip its cards."
           }
           color: drawer.ticket && drawer.ticket.ok === false ? Color.urgent : drawer.muted
         }

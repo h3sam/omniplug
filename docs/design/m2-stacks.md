@@ -159,6 +159,10 @@ Intent { id, to: "left"|"center"|"right"|"stack"|"off"|"on"|"remove",
   (or to a stack) places it instead, moving the entry's settings onto the
   bar. The manager's placement question sends such a widget to Placement, and
   the Drawer lists them under "Not on the bar" for dragging.
+- `to: "none"` is the way back: it takes a widget off the bar or out of its
+  card. Its settings, and an entry that keeps its other kinds enabled, wait
+  in `plugins[]`. It refuses Omniplug and its stacks, custom modules and the
+  last built-in on the bar.
 - **Refusals** keep M1's reasons. `self` now also covers putting Omniplug (or
   a stack) into a stack. New reasons: `noStack` (the stack named does not
   exist), `full` (a limit above).
@@ -208,7 +212,8 @@ becomes:
   stepper, the indicator switch and **Delete**, then each card as a row of
   chips, then a **+ New card** drop target;
 - the widgets placed nowhere, under "Not on the bar", to drag onto the bar or
-  into a card;
+  into a card; dropping a widget there takes it off the bar or out of its
+  card;
 - orphaned stacks, with **Delete** only;
 - a status line for the last ticket's note.
 

@@ -30,7 +30,7 @@
 // turns it into a stack.
 
 var PLACEMENT_BAR_ZONES = ["left", "center", "right"]
-var PLACEMENT_TARGETS = ["left", "center", "right", "stack", "off", "on", "remove"]
+var PLACEMENT_TARGETS = ["left", "center", "right", "stack", "off", "on", "remove", "none"]
 var PLACEMENT_OPS = ["newStack", "deleteStack", "stackSettings", "migrateDrawer", "selfSetting"]
 
 var PLACEMENT_MAX_SECTION = 128
@@ -55,7 +55,7 @@ var PLACEMENT_NOTES = {
   busy: "Another change is still being saved. Nothing was moved.",
   invalid: "That move is not possible. Nothing was moved.",
   self: "Omniplug and its stacks cannot go inside a stack.",
-  notStowable: "Only plain bar widgets can go in a stack. Nothing was moved.",
+  notStowable: "Only plain bar widgets can go in a stack or come off the bar here. Nothing was moved.",
   lastBuiltin: "Keep one Omarchy widget on the bar: stacks find the bar through it.",
   duplicate: "This widget is on the bar more than once. Remove the extra copy first.",
   conflict: "This widget is both on the bar and in a stack. Move one copy by hand first.",
@@ -732,12 +732,16 @@ function placementPlan(config, facts, intent) {
 
     if ((to === "off" || to === "on" || to === "remove") && !fromStacked)
       return placementRefuse(from ? "notStowed" : "notPlaced", id)
+    if (to === "none" && !from) return placementRefuse("notPlaced", id)
+    // A stack's own bar entry is deleted with the stack, not taken off.
+    if (to === "none" && fromBar && board.zones[from.zone][from.index].stack) return placementRefuse("self", id)
     // A widget placed nowhere can go on the bar if it is a bar widget.
     if (toBar && !from && !placementIsBarWidget(facts, id)) return placementRefuse("notPlaced", id)
     // Anything that changes a stack reads and writes the stack store, and
     // placing an unplaced widget moves its plugins[] entry; a partial read
     // cannot see either.
-    if (partial && (to === "stack" || fromStacked || (toBar && !from))) return placementRefuse("needsBarAccess", id)
+    if (partial && (to === "stack" || fromStacked || (toBar && !from) || to === "none"))
+      return placementRefuse("needsBarAccess", id)
 
     // The card a "stack" intent lands in, and where.
     var destCard = null
@@ -812,6 +816,21 @@ function placementPlan(config, facts, intent) {
       placementSetDisabled(next, id, false)
       if (fromStacked) takeFromCard()
       note = "Put " + placementName(facts, id) + (fromStacked ? " back" : "") + " in the " + to + " section."
+    } else if (to === "none" && fromBar) {
+      // Off the bar, into "Not on the bar". Its settings, and an entry that
+      // keeps its other kinds (a service, a panel) enabled, wait in plugins[]
+      // for it to come back; Placement can place it again from there.
+      var leaving = read.layout[from.zone][from.index]
+      var leavingRefusal = placementStowRefusal(read, board, facts, id, leaving)
+      if (leavingRefusal) return placementRefuse(leavingRefusal, id)
+      next.bar.layout[from.zone].splice(from.index, 1)
+      var kept = placementEntrySettings(leaving)
+      if (Object.keys(kept).length > 0 || placementOtherKinds(facts, id)) placementUpsertCarrier(next, id, kept)
+      note = "Took " + placementName(facts, id) + " off the bar."
+    } else if (to === "none") {
+      // Out of its card; its carrier keeps its settings.
+      takeFromCard()
+      note = "Took " + placementName(facts, id) + " out of its stack."
     } else if (to === "off") {
       placementSetDisabled(next, id, true)
       note = "Turned " + placementName(facts, id) + " off. It keeps its place in the stack."

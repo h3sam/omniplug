@@ -491,6 +491,49 @@ test("a widget placed nowhere goes onto the bar with its settings, or into a car
     "needsBarAccess")
 })
 
+test("taking a widget off the bar keeps its settings waiting, so it can come back", () => {
+  const c = withStacks({ s1: [["acme.media"]] }, { plugins: [{ id: "acme.media", volume: 3 }] })
+  const off = plan(c, { id: "acme.vpn", to: "none", from: { zone: "left", index: 1 } })
+  assert.equal(off.ok, true, off.reason)
+  assert.deepEqual(off.next.bar.layout.left, ["omarchy.workspaces"])
+  assert.deepEqual(off.next.plugins.find(e => e.id === "acme.vpn"), { id: "acme.vpn", color: "red" })
+  assert.match(off.note, /Took VPN off the bar/)
+  const board = P.placementBoard(off.next, facts())
+  assert.deepEqual(board.unplaced.find(s => s.id === "acme.vpn").settings, { color: "red" })
+  const back = plan(off.next, { id: "acme.vpn", to: "left", gap: 1 })
+  assert.deepEqual(back.next.bar.layout.left, ["omarchy.workspaces", { id: "acme.vpn", color: "red" }], "round trip")
+
+  const bare = plan(c, { id: "omarchy.clock", to: "none", from: { zone: "center", index: 0 } })
+  assert.deepEqual(bare.next.plugins.find(e => e.id === "omarchy.clock"), { id: "omarchy.clock", format: "24h" })
+  const plain = config()
+  plain.bar.layout.left.push("acme.plain")
+  const extra = facts({ plugins: { ...PLUGINS, "acme.plain": plugin("Plain") } })
+  const gone = plan(plain, { id: "acme.plain", to: "none", from: { zone: "left", index: 2 } }, extra)
+  assert.equal(gone.next.plugins.some(e => e.id === "acme.plain"), false, "nothing to keep, no entry")
+  plain.bar.layout.left.push("acme.media")
+  const panel = plan(plain, { id: "acme.media", to: "none", from: { zone: "left", index: 3 } }, extra)
+  assert.deepEqual(panel.next.plugins.find(e => e.id === "acme.media"), { id: "acme.media" },
+    "its other kinds stay enabled")
+
+  const out = plan(c, { id: "acme.media", to: "none", from: { zone: "stack", stack: "s1", card: 0, index: 0 } })
+  assert.deepEqual(cardsOf(out.next, "s1"), [])
+  assert.deepEqual(out.next.plugins.find(e => e.id === "acme.media"), { id: "acme.media", volume: 3 })
+  assert.match(out.note, /out of its stack/)
+})
+
+test("taking off refuses Omniplug, stacks, custom modules, the last built-in, and widgets placed nowhere", () => {
+  const c = withStacks({ s1: [] })
+  assert.equal(plan(c, { id: SELF, to: "none", from: { zone: "right", index: 1 } }).reason, "self")
+  assert.equal(plan(c, { id: SELF, to: "none", from: { zone: "right", index: 2 } }).reason, "self")
+  const custom = config()
+  custom.bar.layout.left.push({ id: "my.script", exec: "date" })
+  assert.equal(plan(custom, { id: "my.script", to: "none", from: { zone: "left", index: 2 } }).reason, "notStowable")
+  const lonely = config()
+  lonely.bar.layout = { left: ["acme.vpn"], center: ["omarchy.clock"], right: [{ id: SELF }] }
+  assert.equal(plan(lonely, { id: "omarchy.clock", to: "none" }).reason, "lastBuiltin")
+  assert.equal(plan(config(), { id: "omarchy.battery", to: "none" }).reason, "notPlaced")
+})
+
 test("migrating a drawer whose widgets are all placed already makes no empty stack", () => {
   const c = config()
   c.bar.layout.right[1].drawer = ["acme.vpn"]
