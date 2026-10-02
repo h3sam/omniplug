@@ -22,8 +22,10 @@ PanelWindow {
 
   property var port: null
   property string selfId: ""
-  // Placement's board, read with the plugin list's facts when it has them.
+  // Placement's board, read with the plugin list's facts when it has them,
+  // and why there is none when there is not.
   property var board: null
+  property string problem: ""
   // id → display name.
   property var labelFor: function(id) { return String(id) }
   property Item anchorItem: null
@@ -615,7 +617,7 @@ PanelWindow {
           wrapMode: Text.Wrap
           elide: Text.ElideNone
           text: {
-            if (!drawer.board) return "Omniplug cannot read the shell config right now."
+            if (!drawer.board) return drawer.problem || "Omniplug cannot read the shell config right now."
             if (drawer.busy) return "Saving…"
             if (drawer.ticket && drawer.ticket.note) return drawer.ticket.note
             if (drawer.board.reason === "unreadable") return "Loading the plugin list…"

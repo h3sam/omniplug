@@ -127,9 +127,9 @@ function placementCopy(value, keepOrder) {
     if (item === null || typeof item === "boolean") return item
     if (typeof item === "number" && isFinite(item)) return item
     var array = Array.isArray(item)
-    if (!array && !placementIsObject(item)) throw new Error("invalid")
+    if (!array && !placementIsObject(item)) throw placementInvalid("a value JSON cannot hold")
     var keys = Object.keys(item)
-    if (array && keys.length !== item.length) throw new Error("invalid")
+    if (array && keys.length !== item.length) throw placementInvalid("an array with holes")
     if (!array && !keepOrder) keys.sort()
     var result = array ? [] : {}
     for (var i = 0; i < keys.length; i++) {
@@ -141,6 +141,25 @@ function placementCopy(value, keepOrder) {
     return Object.freeze(result)
   }
   return copy(value, 0)
+}
+
+// A refusal to read: "invalid" for every caller, with what exactly was wrong
+// for placementProblem to say.
+function placementInvalid(detail) {
+  var error = new Error("invalid")
+  error.detail = String(detail)
+  return error
+}
+
+// Why placementBoard would return null for this config, in words, or "" when
+// it reads. For the Drawer's status line: the only way to fix a hand edit (or
+// a bug) is to know which entry it is.
+function placementProblem(config, selfId) {
+  try { placementRead(config, String(selfId || "")) } catch (error) {
+    if (String(error && error.message) === "limits") return "shell.json is too large to read safely"
+    return error && error.detail ? error.detail : "shell.json could not be read"
+  }
+  return ""
 }
 
 function placementThaw(value) {
@@ -159,9 +178,9 @@ function placementWidth(value) {
 // layout entry that is not a stack.
 function placementRead(config, selfId) {
   if (!placementIsObject(config) || !placementIsObject(config.bar)
-      || !placementIsObject(config.bar.layout)) throw new Error("invalid")
+      || !placementIsObject(config.bar.layout)) throw placementInvalid("bar.layout is missing or not an object")
   var layoutKeys = Object.keys(config.bar.layout)
-  if (layoutKeys.length !== 3) throw new Error("invalid")
+  if (layoutKeys.length !== 3) throw placementInvalid("bar.layout must have exactly left, center and right")
   var layout = {}
   var stackEntries = []
   var seenSid = {}
@@ -169,15 +188,15 @@ function placementRead(config, selfId) {
   for (var s = 0; s < PLACEMENT_BAR_ZONES.length; s++) {
     var zone = PLACEMENT_BAR_ZONES[s]
     var section = config.bar.layout[zone]
-    if (!Array.isArray(section) || section.length > PLACEMENT_MAX_SECTION) throw new Error("invalid")
+    if (!Array.isArray(section) || section.length > PLACEMENT_MAX_SECTION) throw placementInvalid("bar.layout." + zone + " is not a list, or is too long")
     for (var i = 0; i < section.length; i++) {
       var id = placementEntryId(section[i])
-      if (!placementValidId(id)) throw new Error("invalid")
+      if (!placementValidId(id)) throw placementInvalid("bar.layout." + zone + "[" + i + "] has no usable id")
       if (id !== selfId) continue
       if (placementIsObject(section[i]) && section[i].stack !== undefined) {
         var sid = section[i].stack
         // Two bar entries showing one stack would host its widgets twice.
-        if (!placementValidSid(sid) || seenSid[sid]) throw new Error("invalid")
+        if (!placementValidSid(sid) || seenSid[sid]) throw placementInvalid("stack " + JSON.stringify(sid) + " is " + (seenSid[sid] ? "on the bar twice" : "not a valid stack id"))
         seenSid[sid] = true
         stackEntries.push({ sid: sid, zone: zone, index: i })
       } else if (!own) {
@@ -188,8 +207,8 @@ function placementRead(config, selfId) {
   }
   var plugins = config.plugins === undefined ? [] : config.plugins
   var disabled = config.disabledPlugins === undefined ? [] : config.disabledPlugins
-  if (!Array.isArray(plugins) || plugins.length > PLACEMENT_MAX_LIST) throw new Error("invalid")
-  if (!Array.isArray(disabled) || disabled.length > PLACEMENT_MAX_LIST) throw new Error("invalid")
+  if (!Array.isArray(plugins) || plugins.length > PLACEMENT_MAX_LIST) throw placementInvalid("plugins is not a list, or is too long")
+  if (!Array.isArray(disabled) || disabled.length > PLACEMENT_MAX_LIST) throw placementInvalid("disabledPlugins is not a list, or is too long")
 
   var store = null
   for (var p = 0; p < plugins.length; p++) {
@@ -202,11 +221,11 @@ function placementRead(config, selfId) {
   var legacySource = own ? placementEntrySettings(own.entry) : store ? placementEntrySettings(store) : {}
   if (legacySource.drawer !== undefined) {
     if (!Array.isArray(legacySource.drawer) || legacySource.drawer.length > PLACEMENT_MAX_LEGACY)
-      throw new Error("invalid")
+      throw placementInvalid("the old drawer list is not a list, or is too long")
     var seenLegacy = {}
     for (var d = 0; d < legacySource.drawer.length; d++) {
       var stowed = legacySource.drawer[d]
-      if (!placementValidId(stowed) || seenLegacy[stowed]) throw new Error("invalid")
+      if (!placementValidId(stowed) || seenLegacy[stowed]) throw placementInvalid("the old drawer list repeats or has a bad id: " + JSON.stringify(stowed))
       seenLegacy[stowed] = true
       legacy.push(stowed)
     }
@@ -218,26 +237,26 @@ function placementRead(config, selfId) {
   var stacked = {}
   var total = 0
   var defs = store && store.stacks !== undefined ? store.stacks : {}
-  if (!placementIsObject(defs)) throw new Error("invalid")
+  if (!placementIsObject(defs)) throw placementInvalid("Omniplug's stacks entry is not an object")
   var sids = Object.keys(defs)
-  if (sids.length > PLACEMENT_MAX_STACKS * 2) throw new Error("invalid")
+  if (sids.length > PLACEMENT_MAX_STACKS * 2) throw placementInvalid("too many stacks")
   for (var k = 0; k < sids.length; k++) {
     var def = defs[sids[k]]
-    if (!placementValidSid(sids[k]) || !placementIsObject(def)) throw new Error("invalid")
+    if (!placementValidSid(sids[k]) || !placementIsObject(def)) throw placementInvalid("stack " + JSON.stringify(sids[k]) + " has a bad id or definition")
     var rawCards = def.cards === undefined ? [] : def.cards
-    if (!Array.isArray(rawCards) || rawCards.length > PLACEMENT_MAX_CARDS) throw new Error("invalid")
+    if (!Array.isArray(rawCards) || rawCards.length > PLACEMENT_MAX_CARDS) throw placementInvalid("stack " + sids[k] + " has too many cards")
     var cards = []
     for (var c = 0; c < rawCards.length; c++) {
       var card = rawCards[c]
-      if (!Array.isArray(card) || card.length > PLACEMENT_MAX_CARD) throw new Error("invalid")
+      if (!Array.isArray(card) || card.length > PLACEMENT_MAX_CARD) throw placementInvalid("a card in stack " + sids[k] + " is not a list, or is too long")
       for (var w = 0; w < card.length; w++) {
-        if (!placementValidId(card[w]) || stacked[card[w]] || card[w] === selfId) throw new Error("invalid")
+        if (!placementValidId(card[w]) || stacked[card[w]] || card[w] === selfId) throw placementInvalid(JSON.stringify(card[w]) + (stacked[card[w]] ? " is in more than one card" : card[w] === selfId ? ": Omniplug cannot be in a card" : " is not a valid id") + " (stack " + sids[k] + ")")
         stacked[card[w]] = true
       }
       total += card.length
       if (card.length > 0) cards.push(card)
     }
-    if (total > PLACEMENT_MAX_STACKED) throw new Error("invalid")
+    if (total > PLACEMENT_MAX_STACKED) throw placementInvalid("more than " + PLACEMENT_MAX_STACKED + " widgets in stacks")
     stacks[sids[k]] = { width: placementWidth(def.width), dots: def.dots !== false, cards: cards }
   }
 

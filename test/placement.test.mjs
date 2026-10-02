@@ -6,7 +6,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 
 const source = readFileSync(new URL("../Placement.js", import.meta.url), "utf8")
-const P = Function(source + "; return { placementBoard, placementPlan, placementAssign, placementFactsFromRows, placementStackLabel }")()
+const P = Function(source + "; return { placementBoard, placementPlan, placementAssign, placementFactsFromRows, placementStackLabel, placementProblem }")()
 
 const SELF = "io.github.h3sam.omniplug"
 const plugin = (name, kinds = ["bar-widget"], firstParty = false) => ({ name, kinds, firstParty })
@@ -626,4 +626,13 @@ test("facts come from the plugin list's rows, and stacks are labelled by number"
     { a: { name: "A", kinds: ["bar-widget"], firstParty: true } })
   assert.equal(P.placementStackLabel("s2"), "Stack 2")
   assert.equal(P.placementStackLabel("x"), "Stack x")
+})
+
+test("a config the board refuses says exactly what is wrong with it", () => {
+  assert.equal(P.placementProblem(config(), SELF), "")
+  const twice = withStacks({ s1: [] })
+  twice.bar.layout.left.push({ id: SELF, stack: "s1" })
+  assert.equal(P.placementProblem(twice, SELF), 'stack "s1" is on the bar twice')
+  assert.equal(P.placementProblem(withStacks({ s1: [["a.b"], ["a.b"]] }), SELF), '"a.b" is in more than one card (stack s1)')
+  assert.equal(P.placementProblem({ bar: { layout: { left: [] } } }, SELF), "bar.layout must have exactly left, center and right")
 })

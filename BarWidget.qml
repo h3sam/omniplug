@@ -105,6 +105,18 @@ BarWidget {
         { selfId: root.moduleName, plugins: root.pluginFacts, canCross: shellConfig.canCross })
     : null
 
+  // Why there is no board, in words, for the Drawer: the bar not found yet,
+  // a shell that cannot be written, or the exact entry shell.json is refused
+  // for.
+  readonly property string boardProblem: {
+    if (root.board) return ""
+    if (!barPort.attached)
+      return barPort.searching ? "Looking for the bar…"
+        : "Omniplug could not find the bar. Keep at least one Omarchy widget on it, then restart the shell."
+    if (!shellConfig.config) return "The bar was found, but its shell cannot be changed from here."
+    return "shell.json cannot be used: " + Placement.placementProblem(shellConfig.config, root.moduleName) + "."
+  }
+
   // Placement's owner keeps its last ticket across the bar rebuild a change
   // can cause, so the reopened Drawer can still say what happened. Tickets
   // from before this opening are not news; drawerTicket is a refusal that
@@ -137,6 +149,7 @@ BarWidget {
       port: barPort
       selfId: root.moduleName
       board: root.board
+      problem: root.boardProblem
       labelFor: root.labelFor
       anchorItem: button
       open: root.drawerOpen
