@@ -49,8 +49,10 @@ The M1 glossary still holds, with these additions and changes.
    returns its widgets to the bar where the stack was, in card order.
 8. Widgets stowed with M1 become one new stack with one card holding them all,
    at the end of the right section. Nothing disappears.
-9. Per-stack settings: the **fixed width** and whether the **card indicator**
-   dots are drawn. Stacks have no names and no auto-rotate.
+9. Per-stack settings: the **fixed width**. Stacks have no names and no
+   auto-rotate. (The card indicator was a switch at first; once the flip strip
+   became the indicator and the place to scroll, the switch went. `dots` is
+   still read and written, and ignored.)
 10. Flipping wraps around past the last card. The shown card is remembered
     while the shell runs; a shell restart shows the first card.
 
@@ -197,12 +199,12 @@ IPC handler, no PopupBridge registration.
   wrapping around. The new card slides in a few pixels from the side it came
   from and fades up (160 ms); nothing animates between flips.
 - **The flip strip** sits at the trailing end (the bottom on a vertical bar)
-  whenever there is more than one card. No widget is ever placed there, at
-  rest or fanned out (a fanned card grows to its width plus the strip), so it
-  is always somewhere to scroll. It shows one circle per card, stacked across
-  the bar's thickness and shrunk to fit, the showing card's brightest. It is
-  very dim until hovered. With the indicator off, it keeps its room and shows
-  a single line. The fixed width includes it.
+  of every stack with a card. No widget is ever placed there, at rest or
+  fanned out (a fanned card grows to its width plus the strip), so it is
+  always somewhere to scroll. It shows one circle per card, stacked across
+  the bar's thickness and shrunk to fit; the showing card's is a brighter pill
+  twice as long, so it reads even dim. The strip is dim until hovered. The
+  fixed width includes it.
 - **Settings for stacked widgets** come from their carriers, injected exactly
   as in M1.
 
@@ -216,7 +218,7 @@ becomes:
   Center, Right). Omniplug's own entries and custom entries are shown but
   cannot be dragged;
 - one block per stack, in bar order: a title ("Stack 1 · right"), the width
-  stepper, the indicator switch and **Delete**, then each card as a row of
+  stepper and **Delete**, then each card as a row of
   chips, then a **+ New card** drop target;
 - the widgets placed nowhere, under "Not on the bar", to drag onto the bar or
   into a card; dropping a widget there takes it off the bar or out of its

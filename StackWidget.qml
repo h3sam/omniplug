@@ -44,8 +44,9 @@ Item {
   readonly property real fixedExtent: stack.definition ? stack.definition.width : Placement.PLACEMENT_DEFAULT_WIDTH
   readonly property real naturalExtent: stack.vertical ? row.implicitHeight : row.implicitWidth
   // The flip strip at the trailing end: room that is always the wheel's, and
-  // the card indicator. Only when there is more than one card to flip to.
-  readonly property real handleExtent: stack.cards.length > 1 ? Style.space(12) : 0
+  // the card indicator. On every stack with a card, so they all look alike;
+  // a single circle says there is nothing to flip to.
+  readonly property real handleExtent: stack.cards.length > 0 ? Style.space(12) : 0
   readonly property bool wide: stack.naturalExtent + stack.handleExtent > stack.fixedExtent
   property bool fanned: false
   readonly property real targetExtent: HostingModel.hostingStackExtent({
@@ -177,10 +178,10 @@ Item {
     font.pixelSize: Style.font.body
   }
 
-  // The flip strip: one circle per card, the showing one brightest, stacked
-  // across the bar's thickness at the trailing end. Dim until hovered, so it
-  // says "scroll here" without shouting. With the indicator switched off in
-  // the Drawer, the strip keeps its room and shows a single line instead.
+  // The flip strip: one circle per card, stacked across the bar's thickness
+  // at the trailing end, the showing card's drawn as a pill twice as long and
+  // brightest, so it reads even while the strip is dim. Dim until hovered, so
+  // it says "scroll here" without shouting.
   Item {
     id: handle
     objectName: "flipStrip"
@@ -191,10 +192,10 @@ Item {
     height: stack.vertical ? stack.handleExtent : stack.height
 
     HoverHandler { id: handleHover }
-    readonly property bool showDots: !!stack.definition && stack.definition.dots
-    readonly property var metrics: HostingModel.hostingDotMetrics(stack.cards.length,
+    // One extra circle's room for the pill.
+    readonly property var metrics: HostingModel.hostingDotMetrics(stack.cards.length + 1,
       (stack.vertical ? handle.width : handle.height) - Style.space(6), Style.space(4), Style.space(3))
-    opacity: handleHover.hovered ? 1 : 0.3
+    opacity: handleHover.hovered ? 1 : 0.4
     Behavior on opacity {
       NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
     }
@@ -202,34 +203,27 @@ Item {
     Grid {
       id: dots
       anchors.centerIn: parent
-      visible: handle.showDots
       columns: stack.vertical ? Placement.PLACEMENT_MAX_CARDS : 1
       rows: stack.vertical ? 1 : Placement.PLACEMENT_MAX_CARDS
       spacing: handle.metrics.spacing
 
       Repeater {
-        model: handle.visible && handle.showDots ? stack.cards.length : 0
+        model: handle.visible ? stack.cards.length : 0
 
         Rectangle {
           required property int index
-          width: handle.metrics.size
-          height: width
-          radius: width / 2
-          color: Util.alpha(stack.foreground, index === stack.current ? 1 : 0.4)
-          Behavior on color {
-            ColorAnimation { duration: 120 }
-          }
+          readonly property bool showing: index === stack.current
+          readonly property real length: showing ? handle.metrics.size * 2 + handle.metrics.spacing : handle.metrics.size
+          objectName: showing ? "currentCard" : "card"
+          width: stack.vertical ? length : handle.metrics.size
+          height: stack.vertical ? handle.metrics.size : length
+          radius: handle.metrics.size / 2
+          color: Util.alpha(stack.foreground, showing ? 1 : 0.35)
+          Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+          Behavior on height { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+          Behavior on color { ColorAnimation { duration: 160 } }
         }
       }
-    }
-
-    Rectangle {
-      anchors.centerIn: parent
-      visible: !handle.showDots
-      width: stack.vertical ? Math.round(handle.width * 0.5) : Style.space(2)
-      height: stack.vertical ? Style.space(2) : Math.round(handle.height * 0.5)
-      radius: Math.min(width, height) / 2
-      color: stack.foreground
     }
   }
 }

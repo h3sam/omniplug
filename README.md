@@ -18,8 +18,9 @@ A stack is one slot on the bar with a fixed width. It holds cards, and each
 card is a row of widgets you choose. The bar shows one card at a time:
 scroll over the stack to flip to the next one, round and round, and the new
 card slides in. At the stack's right end (its bottom on a vertical bar) is a
-narrow strip of circles, one per card with the current one brightest: it is
-always free to scroll over, and it brightens while you hover it. A card wider
+narrow strip of circles, one per card, with the current card's drawn as a
+longer, brighter pill: it is always free to scroll over, and it brightens
+while you hover it. A card wider
 than its stack fans out while you hover it, pushing its neighbours aside, and
 folds back when you leave; the strip stays beside it. Click a widget in a stack and its own popup opens,
 as it would anywhere on the bar. Stacks can sit anywhere, and you can have as
@@ -33,8 +34,8 @@ Click the puzzle icon to open the Drawer, where stacks are built:
   into a card, or onto **+ New card**. Drag it between cards to rearrange, or
   back to the strip to put it on the bar again. A card that loses its last
   widget goes away.
-- Each stack has its width (the `−`/`+` buttons, in steps of 20 px), a switch
-  for the circles in its strip (off leaves a plain line), and **Delete**, which puts its
+- Each stack has its width (the `−`/`+` buttons, in steps of 20 px) and
+  **Delete**, which puts its
   widgets back on the bar where the stack was.
 - **Manage** opens the plugin manager described below, and its back arrow
   returns to the Drawer.

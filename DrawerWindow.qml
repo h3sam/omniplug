@@ -533,17 +533,6 @@ PanelWindow {
                         width: stackBlock.stack.width + 20 })
                     }
                     Button {
-                      iconText: stackBlock.stack.dots ? "󰇘" : "󰇙"
-                      tooltipText: stackBlock.stack.dots ? "Hide the card dots" : "Show the card dots"
-                      enabled: drawer.editable
-                      opacity: enabled ? 1 : 0.5
-                      selected: stackBlock.stack.dots
-                      foreground: drawer.text
-                      fontFamily: drawer.fontFamily
-                      onClicked: drawer.send({ op: "stackSettings", stack: stackBlock.stack.sid,
-                        dots: !stackBlock.stack.dots })
-                    }
-                    Button {
                       iconText: "󰆴"
                       tooltipText: "Delete the stack and put its widgets back on the bar"
                       enabled: drawer.editable
