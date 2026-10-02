@@ -139,9 +139,10 @@ Item {
     Grid {
       id: row
       objectName: "card"
-      // One line of at most PLACEMENT_MAX_CARD widgets, across or down.
-      rows: stack.vertical ? Placement.PLACEMENT_MAX_CARD : 1
-      columns: stack.vertical ? 1 : Placement.PLACEMENT_MAX_CARD
+      // One line of the card's widgets, across or down; sized to the card,
+      // since a Grid spaces out every row or column it is given.
+      rows: stack.vertical ? Math.max(1, stack.card.length) : 1
+      columns: stack.vertical ? 1 : Math.max(1, stack.card.length)
       flow: stack.vertical ? Grid.TopToBottom : Grid.LeftToRight
       spacing: 0
       x: stack.vertical ? Math.round((viewport.width - width) / 2)
@@ -192,9 +193,12 @@ Item {
     height: stack.vertical ? stack.handleExtent : stack.height
 
     HoverHandler { id: handleHover }
-    // One extra circle's room for the pill.
-    readonly property var metrics: HostingModel.hostingDotMetrics(stack.cards.length + 1,
-      (stack.vertical ? handle.width : handle.height) - Style.space(6), Style.space(4), Style.space(3))
+    // The room across the bar, and how the cards fit in it: circles and a
+    // pill when they fit, else a track with the pill sliding along it.
+    readonly property real room: (stack.vertical ? handle.width : handle.height) - Style.space(6)
+    readonly property var layout: HostingModel.hostingStripLayout(stack.cards.length, handle.room,
+      Style.space(4), Style.space(3))
+    readonly property real thickness: handle.layout.mode === "dots" ? handle.layout.size : Style.space(4)
     opacity: handleHover.hovered ? 1 : 0.4
     Behavior on opacity {
       NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
@@ -203,26 +207,61 @@ Item {
     Grid {
       id: dots
       anchors.centerIn: parent
-      columns: stack.vertical ? Placement.PLACEMENT_MAX_CARDS : 1
-      rows: stack.vertical ? 1 : Placement.PLACEMENT_MAX_CARDS
-      spacing: handle.metrics.spacing
+      visible: handle.layout.mode === "dots"
+      // Exactly as many rows (or columns) as cards: a Grid spaces out every
+      // row it is given, used or not, which pushed the circles off the bar.
+      columns: stack.vertical ? Math.max(1, stack.cards.length) : 1
+      rows: stack.vertical ? 1 : Math.max(1, stack.cards.length)
+      spacing: handle.layout.mode === "dots" ? handle.layout.spacing : 0
 
       Repeater {
-        model: handle.visible ? stack.cards.length : 0
+        model: handle.visible && handle.layout.mode === "dots" ? stack.cards.length : 0
 
         Rectangle {
           required property int index
           readonly property bool showing: index === stack.current
-          readonly property real length: showing ? handle.metrics.size * 2 + handle.metrics.spacing : handle.metrics.size
+          readonly property real length: showing ? handle.thickness * 2 + handle.layout.spacing : handle.thickness
           objectName: showing ? "currentCard" : "card"
-          width: stack.vertical ? length : handle.metrics.size
-          height: stack.vertical ? handle.metrics.size : length
-          radius: handle.metrics.size / 2
+          width: stack.vertical ? length : handle.thickness
+          height: stack.vertical ? handle.thickness : length
+          radius: handle.thickness / 2
           color: Util.alpha(stack.foreground, showing ? 1 : 0.35)
           Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
           Behavior on height { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
           Behavior on color { ColorAnimation { duration: 160 } }
         }
+      }
+    }
+
+    // Too many cards for circles: a dim line with the pill sliding along it.
+    Item {
+      id: track
+      objectName: "track"
+      visible: handle.layout.mode === "track"
+      anchors.centerIn: parent
+      width: stack.vertical ? handle.room : handle.thickness
+      height: stack.vertical ? handle.thickness : handle.room
+
+      Rectangle {
+        anchors.centerIn: parent
+        width: stack.vertical ? parent.width : Math.max(1, Math.round(handle.thickness / 2))
+        height: stack.vertical ? Math.max(1, Math.round(handle.thickness / 2)) : parent.height
+        radius: Math.min(width, height) / 2
+        color: Util.alpha(stack.foreground, 0.35)
+      }
+
+      Rectangle {
+        objectName: "currentCard"
+        readonly property real offset: handle.layout.mode === "track"
+          ? HostingModel.hostingThumbOffset(stack.current, stack.cards.length, handle.room, handle.layout.thumb) : 0
+        x: stack.vertical ? offset : 0
+        y: stack.vertical ? 0 : offset
+        width: stack.vertical ? (handle.layout.thumb || 0) : handle.thickness
+        height: stack.vertical ? handle.thickness : (handle.layout.thumb || 0)
+        radius: handle.thickness / 2
+        color: stack.foreground
+        Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        Behavior on y { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
       }
     }
   }

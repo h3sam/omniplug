@@ -273,13 +273,31 @@ class StackWidgetTest(unittest.TestCase):
         self.assertNotEqual(self.js("stack.slide"), 0, "the new card starts off to the side")
         self.settle(250)
         self.assertEqual(self.js("stack.slide"), 0)
-        pill = '(function(){var out=[];function w(i){if(i.objectName==="currentCard"||i.objectName==="card")out.push(i.objectName+":"+i.height);for(var k=0;k<i.children.length;k++)w(i.children[k])}w(%s);return out.join()})()' % strip
+        pill = '(function(){var out=[];function w(i){if(!i.visible)return;if(i.objectName==="currentCard"||i.objectName==="card")out.push(i.objectName+":"+i.height);for(var k=0;k<i.children.length;k++)w(i.children[k])}w(%s);return out.join()})()' % strip
         shapes = [part.split(":") for part in self.js(pill).split(",")]
         self.assertEqual([name for name, _ in shapes], ["card", "currentCard", "card"], "the second of three")
         self.assertGreater(float(shapes[1][1]), 2 * float(shapes[0][1]) - 1, "the showing card is a pill")
         self.make(config([["omarchy.clock"]], dots=False), screen="single")
         self.assertEqual(self.js(strip + ".visible"), True, "every stack with a card has the strip")
         self.assertTrue(self.js(pill).startswith("currentCard:"), "one card, one pill; the old dots switch no longer hides it")
+
+    def test_a_crowded_strip_stays_inside_the_bar(self):
+        strip = 'stack.children.find(c => c.objectName === "flipStrip")'
+        bounds = ('(function(){var h=%s;var out=[];function w(i){if((i.objectName==="currentCard"||i.objectName==="card")&&i.visible){'
+                  'var p=i.mapToItem(h,0,0);out.push(p.y>=0&&p.y+i.height<=h.height)}for(var k=0;k<i.children.length;k++)w(i.children[k])}'
+                  'w(h);return out.length+":"+out.every(Boolean)})()' % strip)
+        self.js("port.barSize = 26")
+        for count, mode in ((3, "dots"), (9, "track"), (16, "track")):
+            ids = ["omarchy.c%d" % i for i in range(count)]
+            widgets = ", ".join('"%s": { component: widget, metadata: {} }' % i for i in ids)
+            self.js("port.widgets = ({ %s })" % widgets)
+            self.make(config([[i] for i in ids]), screen="crowd%d" % count)
+            self.js("stack.flip(%d)" % (count - 1))
+            self.settle(250)
+            self.assertEqual(self.js(strip + ".layout.mode"), mode, "%d cards" % count)
+            shown, inside = self.js(bounds).split(":")
+            self.assertGreater(int(shown), 0, "%d cards: something marks the showing card" % count)
+            self.assertEqual(inside, "true", "%d cards: every mark is inside the bar" % count)
 
 
 if __name__ == "__main__":

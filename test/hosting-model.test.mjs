@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../HostingModel.js", import.meta.url), "utf
 const H = Function(source + `; return { hostingIsHostBar, hostingCanWrite, hostingFindHostBar,
   hostingIsDescendant, hostingTiles, hostingSettings, hostingSettingsKey, hostingTileState,
   hostingReasonText, hostingPopoutVerdict, HOSTING_MAX_ENTRIES, hostingStackCards, hostingStackEntries,
-  hostingWrap, hostingWheelStep, hostingStackExtent, hostingDotMetrics }`)()
+  hostingWrap, hostingWheelStep, hostingStackExtent, hostingStripLayout, hostingThumbOffset }`)()
 
 const barRoot = (over = {}) => ({
   pluginBarApiFor() {}, requestPopout() {}, registerModuleSlot() {}, barWidgetRegistry: {}, ...over
@@ -140,11 +140,26 @@ test("a fanned card keeps the flip strip beside it, and the fixed width already 
   assert.equal(H.hostingStackExtent({ ...base, fanned: true, natural: 150 }), 162)
 })
 
-test("the flip strip's circles fit the bar's thickness, however many cards there are", () => {
-  assert.deepEqual(H.hostingDotMetrics(3, 24, 4, 3), { size: 4, spacing: 3 })
-  const six = H.hostingDotMetrics(6, 24, 4, 3)
-  assert.ok(6 * six.size + 5 * six.spacing <= 24, "shrunk to fit")
-  assert.deepEqual(H.hostingDotMetrics(16, 24, 4, 3), { size: 2, spacing: 1 },
-    "never below the floor; the stack clips the rest")
-  assert.deepEqual(H.hostingDotMetrics(5, 0, 4, 3), { size: 4, spacing: 3 }, "unknown room keeps the preference")
+test("the flip strip draws circles while they fit the bar, and a track past that", () => {
+  // A 26 px bar leaves 20 px across it.
+  const length = (count, l) => (count + 1) * l.size + count * l.spacing
+  for (const count of [1, 2, 3]) {
+    const layout = H.hostingStripLayout(count, 20, 4, 3)
+    assert.equal(layout.mode, "dots", count + " cards")
+    assert.ok(length(count, layout) <= 20, count + " cards fit, pill included")
+  }
+  const four = H.hostingStripLayout(4, 20, 4, 3)
+  assert.deepEqual(four, { mode: "dots", size: 3, spacing: 1 }, "shrunk, never below 3 px")
+  assert.ok(length(4, four) <= 20)
+  const many = H.hostingStripLayout(9, 20, 4, 3)
+  assert.equal(many.mode, "track", "nine cards cannot be circles in 20 px")
+  assert.ok(many.thumb >= 4 && many.thumb <= 20)
+  assert.deepEqual(H.hostingStripLayout(16, 0, 4, 3), { mode: "dots", size: 4, spacing: 3 }, "unknown room keeps the preference")
+})
+
+test("the track's pill slides from the first card at the start to the last at the end", () => {
+  assert.equal(H.hostingThumbOffset(0, 9, 20, 4), 0)
+  assert.equal(H.hostingThumbOffset(8, 9, 20, 4), 16, "flush with the end")
+  assert.equal(H.hostingThumbOffset(4, 9, 20, 4), 8)
+  assert.equal(H.hostingThumbOffset(0, 1, 20, 4), 0)
 })

@@ -202,9 +202,11 @@ IPC handler, no PopupBridge registration.
   of every stack with a card. No widget is ever placed there, at rest or
   fanned out (a fanned card grows to its width plus the strip), so it is
   always somewhere to scroll. It shows one circle per card, stacked across
-  the bar's thickness and shrunk to fit; the showing card's is a brighter pill
-  twice as long, so it reads even dim. The strip is dim until hovered. The
-  fixed width includes it.
+  the bar's thickness and shrunk to fit (never below 3 px); the showing
+  card's is a brighter pill twice as long, so it reads even dim. When the
+  circles cannot fit, it becomes a dim track with the pill sliding along it
+  to the showing card's share. Every mark stays inside the bar. The strip is
+  dim until hovered. The fixed width includes it.
 - **Settings for stacked widgets** come from their carriers, injected exactly
   as in M1.
 

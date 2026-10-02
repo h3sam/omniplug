@@ -202,17 +202,33 @@ function hostingStackExtent(facts) {
   return f.fanned && full > fixed ? full : fixed
 }
 
-// The flip strip's circles, one per card, fitted into the bar's thickness:
-// { size, spacing } in pixels, never smaller than 2.
-function hostingDotMetrics(count, room, preferredSize, preferredSpacing) {
-  var n = Math.max(1, Math.floor(count) || 1)
+// How the flip strip draws `count` cards in `room` pixels across the bar:
+//   { mode: "dots", size, spacing }  one circle per card, the showing card's a
+//                                    pill two circles long, all inside room
+//   { mode: "track", thumb }         too many to draw: a line the length of
+//                                    room, with a pill `thumb` long that slides
+//                                    to the showing card's share of it
+// Circles shrink to fit but never below 3 px; past that it is a track.
+// Unknown room (0) keeps the preferred circles.
+function hostingStripLayout(count, room, preferredSize, preferredSpacing) {
+  var n = Math.max(1, Math.floor(count) || 1) + 1
   var size = preferredSize || 4
   var spacing = preferredSpacing || 3
-  var needed = n * size + (n - 1) * spacing
-  if (room > 0 && needed > room) {
-    var pitch = (room + spacing) / n
-    spacing = Math.max(1, Math.min(spacing, Math.floor(pitch / 3)))
-    size = Math.max(2, Math.floor(pitch - spacing))
+  function length(s, sp) { return n * s + (n - 1) * sp }
+  if (!(room > 0) || length(size, spacing) <= room) return { mode: "dots", size: size, spacing: spacing }
+  for (var s = size; s >= 3; s--) {
+    for (var sp = Math.min(spacing, s); sp >= 1; sp--) {
+      if (length(s, sp) <= room) return { mode: "dots", size: s, spacing: sp }
+    }
   }
-  return { size: size, spacing: spacing }
+  var cards = n - 1
+  return { mode: "track", thumb: Math.max(4, Math.min(room, Math.round(room / cards))) }
+}
+
+// Where the track's pill starts for the showing card: evenly from the first
+// card at 0 to the last at room - thumb.
+function hostingThumbOffset(current, count, room, thumb) {
+  if (!(count > 1)) return 0
+  var free = Math.max(0, room - thumb)
+  return Math.round(free * Math.max(0, Math.min(count - 1, current)) / (count - 1))
 }
