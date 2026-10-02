@@ -150,6 +150,15 @@ Intent { id, to: "left"|"center"|"right"|"stack"|"off"|"on"|"remove",
   placeholder goes.
 - `migrateDrawer` turns M1's `drawer: [...]` on the icon entry into a stack
   (decision 8). The Placement owner sends it once, as soon as it can write.
+  When every widget in the list is already placed, it only clears the list
+  and makes no stack.
+- **Widgets placed nowhere.** `board.unplaced` lists the bar widgets that are
+  neither on the bar nor in a stack, each marked `carried` when it still has a
+  `plugins[]` entry. `omarchy plugin enable` finds that entry, takes the
+  widget for placed, and changes nothing, so a by-id intent to a bar section
+  (or to a stack) places it instead, moving the entry's settings onto the
+  bar. The manager's placement question sends such a widget to Placement, and
+  the Drawer lists them under "Not on the bar" for dragging.
 - **Refusals** keep M1's reasons. `self` now also covers putting Omniplug (or
   a stack) into a stack. New reasons: `noStack` (the stack named does not
   exist), `full` (a limit above).
@@ -198,7 +207,9 @@ becomes:
 - one block per stack, in bar order: a title ("Stack 1 · right"), the width
   stepper, the indicator switch and **Delete**, then each card as a row of
   chips, then a **+ New card** drop target;
-- orphans under "Not on the bar", with **Delete** only;
+- the widgets placed nowhere, under "Not on the bar", to drag onto the bar or
+  into a card;
+- orphaned stacks, with **Delete** only;
 - a status line for the last ticket's note.
 
 Chips are plain labels, not live widgets. Off chips are dimmed. Missing chips

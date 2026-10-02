@@ -117,7 +117,7 @@ function storeState(requests, ok = true) {
     startDisable(row) { state.started.push([row.id, "disable"]) },
     cancelPending() { state.pendingKind = ""; state.pendingId = ""; state.pendingLabel = "" }
   }
-  for (const name of ["placeStowed", "askEnable", "askDisable", "confirmPlacement"])
+  for (const name of ["placeStowed", "askEnable", "askDisable", "confirmPlacement", "strandedOffBar"])
     state[name] = (...args) => call(storeSource, name, state, ...args)
   return state
 }
@@ -148,6 +148,21 @@ test("the placement question offers bar sections only, through the host's enable
   assert.deepEqual(s.started, [["acme.vpn", "left"]])
   assert.deepEqual(requests, [])
   assert.match(storeSource, /Model\.placementOptions\(\)/)
+})
+
+test("a stranded widget's placement answer goes to Placement: the host's enable would find its entry and stop", () => {
+  const requests = []
+  const s = storeState(requests)
+  s.rows = [{ id: "acme.vpn", name: "VPN", enabled: false, kinds: ["bar-widget"] }]
+  s.placement.board = { canStow: true, unplaced: [{ id: "acme.vpn", carried: true }, { id: "acme.free", carried: false }] }
+  s.pendingKind = "place"; s.pendingId = "acme.vpn"; s.pendingLabel = "VPN"
+  s.confirmPlacement("left")
+  assert.deepEqual(requests, [{ id: "acme.vpn", to: "left" }])
+  assert.deepEqual(s.started, [])
+  s.rows.push({ id: "acme.free", name: "Free", enabled: false, kinds: ["bar-widget"] })
+  s.pendingKind = "place"; s.pendingId = "acme.free"; s.pendingLabel = "Free"
+  s.confirmPlacement("right")
+  assert.deepEqual(s.started, [["acme.free", "right"]], "with no entry in the way, the host's enable places it")
 })
 
 test("a refused Placement request is reported as an error", () => {

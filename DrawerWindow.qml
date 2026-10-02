@@ -106,9 +106,13 @@ PanelWindow {
   // slot it landed in, counted before the source is removed.
   function drop(source, target, gap) {
     if (!source || !target || !drawer.board) return
-    var intent = { id: source.id, from: source.from, key: drawer.board.key }
+    if (target.kind === "none") return
+    // A widget placed nowhere is moved by id; everything else by position.
+    var intent = { id: source.id, key: drawer.board.key }
+    if (source.from.zone !== "none") intent.from = source.from
     if (target.kind === "bar") {
-      if (source.from.zone !== "stack") return // reordering the bar is Arrange's job
+      if (source.from.zone === "left" || source.from.zone === "center" || source.from.zone === "right")
+        return // reordering the bar is Arrange's job
       intent.to = target.zone
       intent.gap = gap
     } else {
@@ -245,8 +249,9 @@ PanelWindow {
         var held = drawer.held
         armed = false
         if (!held) {
-          // A click on a placeholder in a stack removes it.
-          if (removeMark.visible && drawer.editable)
+          // A click on a placeholder's ✕ removes it from its stack.
+          var onMark = removeMark.visible && removeMark.contains(mapToItem(removeMark, mouse.x, mouse.y))
+          if (onMark && drawer.editable)
             drawer.send({ id: chip.slot.id, to: "remove", from: chip.from, key: drawer.board.key })
           return
         }
@@ -267,7 +272,8 @@ PanelWindow {
     property alias chips: chipRepeater.model
     property var fromFor: function(index) { return null }
     property string emptyText: ""
-    readonly property bool hot: !!drawer.held && drawer.hoverTarget === row
+    readonly property bool hot: !!drawer.held && drawer.hoverTarget === row && !!row.dropInfo
+      && row.dropInfo.kind !== "none"
 
     width: parent ? parent.width : 0
     implicitHeight: Math.max(flow.implicitHeight, emptyLabel.implicitHeight) + Style.space(10)
@@ -450,6 +456,23 @@ PanelWindow {
               }
             }
 
+            // Bar widgets placed nowhere, off or simply not added: drag one
+            // onto the bar or into a card.
+            Column {
+              width: sections.width
+              spacing: Style.space(3)
+              visible: !!drawer.board && drawer.board.unplaced.length > 0
+              Caption {
+                text: "NOT ON THE BAR"
+                font.bold: true
+              }
+              DropRow {
+                dropInfo: ({ kind: "none" })
+                chips: drawer.board ? drawer.board.unplaced : []
+                fromFor: function(index) { return { zone: "none" } }
+              }
+            }
+
             Repeater {
               model: drawer.board ? drawer.board.stacks : []
 
@@ -594,8 +617,8 @@ PanelWindow {
             if (drawer.ticket && drawer.ticket.note) return drawer.ticket.note
             if (drawer.board.reason === "unreadable") return "Loading the plugin list…"
             if (drawer.board.reason === "needsBarAccess") return Placement.PLACEMENT_NOTES.needsBarAccess
-            if (drawer.board.stacks.length === 0) return "Make a stack, then drag widgets from the bar into it."
-            return "Drag widgets between the bar and the cards. Scroll over a stack on the bar to flip its cards."
+            if (drawer.board.stacks.length === 0) return "Make a stack, then drag widgets into it."
+            return "Drag widgets into the cards, between them, or back onto the bar. Scroll over a stack on the bar to flip its cards."
           }
           color: drawer.ticket && drawer.ticket.ok === false ? Color.urgent : drawer.muted
         }

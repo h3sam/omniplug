@@ -47,7 +47,8 @@ Item {
     open: true
     board: cfg ? Placement.placementBoard(cfg, { selfId: "%s", canCross: true, plugins: {
       "omarchy.clock": { name: "Clock", kinds: ["bar-widget"], firstParty: true },
-      "acme.vpn": { name: "VPN", kinds: ["bar-widget"], firstParty: false } } }) : null
+      "acme.vpn": { name: "VPN", kinds: ["bar-widget"], firstParty: false },
+      "acme.proxies": { name: "Proxies", kinds: ["bar-widget"], firstParty: false } } }) : null
   }
 }
 """ % (SELF, SELF)
@@ -102,14 +103,16 @@ class QmlCompilesTest(unittest.TestCase):
                                "right": [{"id": SELF}, {"id": SELF, "stack": "s1"}]}},
             "plugins": [{"id": SELF, "stacks": {"s1": {"width": 160, "dots": True,
                                                        "cards": [["acme.vpn"], ["gone.widget"]]}}},
-                        {"id": "acme.vpn"}],
+                        {"id": "acme.vpn"}, {"id": "acme.proxies"}],
             "disabledPlugins": [],
         }
         context = self.engine.contextForObject(scene)
         QQmlExpression(context, scene, "cfg = " + json.dumps(config)).evaluate()
         self.app.processEvents()
         result, _ = QQmlExpression(context, scene, "drawer.dropTargets.length").evaluate()
-        self.assertEqual(result, 6, "three bar sections, two cards, and + New card")
+        self.assertEqual(result, 7, "three bar sections, the widgets placed nowhere, two cards, and + New card")
+        unplaced, _ = QQmlExpression(context, scene, "drawer.board.unplaced.map(s => s.id).join()").evaluate()
+        self.assertEqual(unplaced, "acme.proxies", "a stranded widget is offered for dragging")
         self.assertEqual(self.warnings, [])
         scene.deleteLater()
         self.app.processEvents()

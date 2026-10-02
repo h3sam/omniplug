@@ -373,6 +373,24 @@ function placementBoard(config, facts) {
   var orphans = order.orphans.map(function(sid) { return stackOf(sid, "", -1) })
   for (var z in zones) zones[z] = Object.freeze(zones[z])
 
+  // Bar widgets placed nowhere: neither on the bar nor in a stack. Some are
+  // simply off; others still have a plugins[] entry (a carrier, or one that
+  // keeps another kind of theirs enabled), which the host's own enable reads
+  // as "already placed" and so cannot bring back. Only Placement can.
+  var unplaced = []
+  if (known) {
+    for (var pid in facts.plugins) {
+      var kinds = facts.plugins[pid] && Array.isArray(facts.plugins[pid].kinds) ? facts.plugins[pid].kinds : []
+      if (pid === selfId || byId[pid] || kinds.indexOf("bar-widget") < 0 || kinds.indexOf("bar") >= 0) continue
+      if (!placementValidId(pid)) continue
+      var held = partial ? null : placementCarrier(read, pid)
+      unplaced.push(freezeSlot({ id: pid, zone: "none", index: -1, stack: "", custom: false,
+        settings: held ? placementEntrySettings(held) : {}, carried: !!held,
+        state: read.disabled.indexOf(pid) >= 0 ? "off" : "live" }))
+    }
+    unplaced.sort(function(a, b) { return a.name.localeCompare(b.name) || (a.id < b.id ? -1 : 1) })
+  }
+
   var canCross = !!(facts && facts.canCross)
   return Object.freeze({
     key: placementKeyOf(read, selfId),
@@ -384,6 +402,7 @@ function placementBoard(config, facts) {
       return counts[id] > 1 && id !== selfId
     })),
     conflicts: Object.freeze(conflicts),
+    unplaced: Object.freeze(unplaced),
     legacyDrawer: read.legacy,
     canStow: canCross && known && !partial,
     reason: !known ? "unreadable" : !canCross || partial ? "needsBarAccess" : "",
@@ -601,21 +620,27 @@ function placementPlan(config, facts, intent) {
       var sid = placementNewSid(read)
       if (!sid) return placementRefuse("full")
       var def = { width: PLACEMENT_DEFAULT_WIDTH, dots: true, cards: [] }
+      var makeStack = true
       if (op === "migrateDrawer") {
         // A widget already on the bar or in a stack stays where it is: a
-        // conflict is never guessed about.
+        // conflict is never guessed about. When every one of them is placed
+        // already, the old list goes and no empty stack is made.
         var moving = read.legacy.filter(function(member) { return !board.byId[member] && member !== selfId })
         for (var m = 0; m < moving.length; m += PLACEMENT_MAX_CARD)
           def.cards.push(moving.slice(m, m + PLACEMENT_MAX_CARD))
         if (placementCountStacked(stacks) + moving.length > PLACEMENT_MAX_STACKED) return placementRefuse("full")
         placementEachIcon(next, selfId, function(entry) { delete entry.drawer })
         dropLegacy = true
-        note = "Moved the old drawer's widgets into a new stack."
+        makeStack = moving.length > 0
+        note = makeStack ? "Moved the old drawer's widgets into a new stack."
+          : "The old drawer's widgets are already placed; its list is gone."
       } else {
         note = "Added a stack to the " + section + " section. Move it in Arrange."
       }
-      next.bar.layout[section].push({ id: selfId, stack: sid })
-      stacks[sid] = def
+      if (makeStack) {
+        next.bar.layout[section].push({ id: selfId, stack: sid })
+        stacks[sid] = def
+      }
       normalized.section = section
     } else if (op === "deleteStack" || op === "stackSettings") {
       if (!placementValidSid(intent.stack)) return placementRefuse("invalid")
@@ -707,10 +732,12 @@ function placementPlan(config, facts, intent) {
 
     if ((to === "off" || to === "on" || to === "remove") && !fromStacked)
       return placementRefuse(from ? "notStowed" : "notPlaced", id)
-    if (toBar && !from) return placementRefuse("notPlaced", id)
-    // Anything that changes a stack reads and writes the stack store, which a
-    // partial read cannot see.
-    if (partial && (to === "stack" || fromStacked)) return placementRefuse("needsBarAccess", id)
+    // A widget placed nowhere can go on the bar if it is a bar widget.
+    if (toBar && !from && !placementIsBarWidget(facts, id)) return placementRefuse("notPlaced", id)
+    // Anything that changes a stack reads and writes the stack store, and
+    // placing an unplaced widget moves its plugins[] entry; a partial read
+    // cannot see either.
+    if (partial && (to === "stack" || fromStacked || (toBar && !from))) return placementRefuse("needsBarAccess", id)
 
     // The card a "stack" intent lands in, and where.
     var destCard = null
@@ -774,7 +801,7 @@ function placementPlan(config, facts, intent) {
       if (destCard.newCard) destStack.cards.push([id])
       else destStack.cards[destCard.card].splice(cardGap, 0, id)
       note = sameCardMove ? "Moved within the card." : "Moved to another card."
-    } else if (fromStacked && toBar) {
+    } else if ((fromStacked || !from) && toBar) {
       var carrier = placementCarrier(read, id)
       var carriedSettings = carrier ? placementEntrySettings(carrier) : {}
       var restored = { id: id }
@@ -783,8 +810,8 @@ function placementPlan(config, facts, intent) {
       next.bar.layout[to].splice(barGap, 0, Object.keys(carriedSettings).length ? restored : id)
       placementDropCarrier(next, id, placementOtherKinds(facts, id))
       placementSetDisabled(next, id, false)
-      takeFromCard()
-      note = "Put " + placementName(facts, id) + " back in the " + to + " section."
+      if (fromStacked) takeFromCard()
+      note = "Put " + placementName(facts, id) + (fromStacked ? " back" : "") + " in the " + to + " section."
     } else if (to === "off") {
       placementSetDisabled(next, id, true)
       note = "Turned " + placementName(facts, id) + " off. It keeps its place in the stack."

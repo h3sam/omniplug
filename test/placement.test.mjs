@@ -332,7 +332,7 @@ test("off, on and remove only apply to stacked widgets", () => {
   assert.equal(plan(config(), { id: "acme.vpn", to: "on" }).reason, "notStowed")
   assert.equal(plan(config(), { id: "acme.nothing", to: "off" }).reason, "notPlaced")
   assert.equal(plan(config(), { id: "acme.vpn", to: "remove" }).reason, "notStowed")
-  assert.equal(plan(config(), { id: "acme.nothing", to: "left" }).reason, "notPlaced")
+  assert.equal(plan(config(), { id: "acme.nothing", to: "left" }).reason, "notPlaced", "not a known bar widget")
 })
 
 test("remove forgets a placeholder and its carrier, and drops its card if emptied", () => {
@@ -451,6 +451,54 @@ test("selfSetting writes the icon's settings without touching any stack", () => 
   assert.deepEqual(p.touched, ["layout"])
   assert.equal(plan(c, { op: "selfSetting", name: "stack", value: "s2" }).reason, "invalid")
   assert.equal(plan(c, { op: "selfSetting", name: "x", value: {} }).reason, "invalid")
+})
+
+// ---- Widgets placed nowhere --------------------------------------------
+
+// What a lost M1 drawer leaves behind: carriers for widgets that are neither
+// on the bar nor in a stack, which `omarchy plugin enable` reads as placed.
+function stranded() {
+  const c = withStacks({ s1: [] }, { plugins: [{ id: "acme.vpn", color: "red" }, { id: "acme.media" }],
+    disabledPlugins: ["omarchy.battery"] })
+  c.bar.layout.left = ["omarchy.workspaces"]
+  return c
+}
+
+test("the board lists bar widgets placed nowhere, and whether each still has a plugins[] entry", () => {
+  const board = P.placementBoard(stranded(), facts())
+  assert.deepEqual(board.unplaced.map(s => [s.id, s.state, s.carried]),
+    [["omarchy.battery", "off", false], ["acme.media", "live", true], ["acme.vpn", "live", true]])
+  assert.deepEqual(board.unplaced.find(s => s.id === "acme.vpn").settings, { color: "red" })
+  assert.deepEqual(P.placementBoard(stranded(), facts({ plugins: null })).unplaced, [], "unknown without the plugin list")
+})
+
+test("a widget placed nowhere goes onto the bar with its settings, or into a card", () => {
+  const onBar = plan(stranded(), { id: "acme.vpn", to: "right", gap: 0 })
+  assert.equal(onBar.ok, true, onBar.reason)
+  assert.deepEqual(onBar.next.bar.layout.right[0], { id: "acme.vpn", color: "red" })
+  assert.equal(onBar.next.plugins.some(e => e.id === "acme.vpn"), false, "the carrier moves onto the bar")
+  assert.match(onBar.note, /Put VPN in the right section/)
+  const media = plan(stranded(), { id: "acme.media", to: "left" })
+  assert.deepEqual(media.next.bar.layout.left, ["omarchy.workspaces", "acme.media"])
+  assert.deepEqual(media.next.plugins.find(e => e.id === "acme.media"), { id: "acme.media" }, "its panel stays enabled")
+  const builtin = plan(stranded(), { id: "omarchy.battery", to: "center", gap: 1 })
+  assert.deepEqual(builtin.next.bar.layout.center, [{ id: "omarchy.clock", format: "24h" }, "omarchy.battery"])
+  assert.deepEqual(builtin.next.disabledPlugins, [], "placing it turns it on")
+  const card = plan(stranded(), { id: "acme.vpn", to: "stack", stack: "s1", card: 0 })
+  assert.deepEqual(cardsOf(card.next, "s1"), [["acme.vpn"]])
+  assert.equal(plan(stranded(), { id: "acme.service", to: "left" }).reason, "notPlaced", "only bar widgets")
+  assert.equal(plan(stranded(), { id: "acme.vpn", to: "left" }, facts({ canCross: false, partial: true })).reason,
+    "needsBarAccess")
+})
+
+test("migrating a drawer whose widgets are all placed already makes no empty stack", () => {
+  const c = config()
+  c.bar.layout.right[1].drawer = ["acme.vpn"]
+  const p = plan(c, { op: "migrateDrawer" })
+  assert.equal(p.ok, true, p.reason)
+  assert.deepEqual(p.next.bar.layout.right, ["omarchy.tray", { id: SELF, allowUnverifiedUpdates: true }])
+  assert.match(p.note, /already placed/)
+  assert.equal("plugins" in p.next && p.next.plugins.some(e => e.id === SELF), false)
 })
 
 // ---- Bar moves and the writer ------------------------------------------
